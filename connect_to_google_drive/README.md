@@ -27,3 +27,13 @@ pip install PyDrive2
 
 To connect and extract data/file from Google drive.
 
+## Kill port 8080 after use
+
+In terminal, run the follow:
+
+```
+lsof -i :8080
+
+kill <PID> 
+```
+
