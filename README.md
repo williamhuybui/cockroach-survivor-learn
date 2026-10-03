@@ -7,7 +7,6 @@ Paired learning plan. Two groups of two, one course each, weekly pace balanced b
 | Group 1 | Hieu, Ha | [LangChain](https://www.udemy.com/course/langchain/) |
 | Group 2 | Huy, Tri | [FastAPI - The Complete Course 2026](https://www.udemy.com/course/fastapi-the-complete-course/) |
 
----
 
 ## Group 1: Hieu & Ha
 

@@ -27,6 +27,10 @@ pip install PyDrive2
 
 To connect and extract data/file from Google drive.
 
+## Stay logged in
+
+The first run opens a browser to log in, then saves the token to `credentials.json` (next to `client_secrets.json`, gitignored). Later runs reuse it with no browser. To log in again, delete `credentials.json`.
+
 ## Kill port 8080 after use
 
 In terminal, run the follow:
