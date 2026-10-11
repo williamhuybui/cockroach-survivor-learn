@@ -1,6 +1,12 @@
-client_secrets.json
-.claude
-__pycache__
 
-.venv
+# macOS system files
+.DS_Store
+**/.DS_Store
+
+# Python virtual environments
+.venv/
+.venvv/
+
+# Google Drive credentials
+client_secrets.json
 credentials.json
