@@ -6,3 +6,8 @@ pyOpenSSL>=23.2,<24
 cryptography>=41,<42
 PyYAML>=6.0
 ipykernel>=6.0
+pypdf>=4.0
+langgraph
+fastapi
+uvicorn
+requests

@@ -10,3 +10,9 @@
 # Google Drive credentials
 client_secrets.json
 credentials.json
+
+# Downloaded Google Drive files
+tmp/
+
+# Python cache
+__pycache__/

@@ -1,86 +1,145 @@
-# cockroach-survivor-learn
+# RAG Project
 
-Paired learning plan. Two groups of two, one course each, weekly pace balanced by difficulty (not just runtime).
+## Goals
 
-| Group | Members | Course |
+- Review what we've learned, and fill the gaps, in **FastAPI, LangChain, LangGraph, and RAG**.
+- Build a complete RAG system end to end, understand how a RAG application is put together, and customize it for our own database.
+- Build technical depth and critical thinking:
+  - Understand what every function and line does. For example:
+    - What does `sum([int(i) for i in ["5", "6", "seven"] if len(i) <= 2])` return, and why doesn't it crash?
+    - What does `yield` do?
+  - Using AI to generate code is fine, but expect to explain every detail of it.
+
+## Teams
+
+- **Judge:** Huy
+- **Team 1:** Hieu (Captain), Trang
+- **Team 2:** Ha (Captain), Tri
+
+Each team has its own channel for discussion, by text or meeting.
+
+## Rules
+
+- Both teams use the **same document set**, provided by Huy. For papers, everyone uses the same arXiv version.
+- **LLM:** Gemma 3 4B, run offline through Ollama, for both teams.
+- **LangGraph is required** for orchestrating the pipeline. FastAPI serves the system. Any embedding model or retrieval technique is allowed.
+- Both teams use the **same GitHub repo**, and each team works in its own folder (`team1/`, `team2/`).
+- There are no required milestones. Teams work at their own pace.
+
+## Weekly Meeting (Sundays: Oct 18, Oct 25, Nov 1)
+
+For each team:
+
+1. **Presentation (20 min):** Present what you've built so far, without interruption.
+2. **Q&A (20 min):** The other team asks questions, in as much detail as they want, down to individual lines of code. Examples:
+   - High level: How is the LangGraph workflow structured? Why this chunking strategy or retriever and not another?
+   - Low level: What does `yield` do? What does `uvicorn huy:app --reload` do?
+
+"I don't know, I'll find out by next week" is an acceptable answer, as long as you follow up the next week.
+
+## Evaluation
+
+### Question Set (created by Huy)
+
+| Type | Count |
+|---|---|
+| Answer comes from 1 document | 20 |
+| Answer requires 2+ documents | 20 |
+| Unanswerable (not in the documents) | 5 |
+
+- **Dev set:** 10 sample questions with answers, shared with both teams for development.
+- **Test set:** the rest, kept hidden.
+
+### Weekly Practice Evaluation (Optional)
+
+- Each team may run the test set **once per week** to check its progress.
+- Practice scores don't count toward the final result.
+
+### Final Evaluation (Nov 1)
+
+Only this evaluation counts. The score rewards correct answers and penalizes hallucination. **Saying "I don't know" is always better than making something up.**
+
+| Model's response | Points |
+|---|---|
+| Correct answer | +1 |
+| Partially correct answer | +0.5 |
+| "I don't know" / "Not in the documents" | 0 |
+| Hallucinated (wrong or made-up) answer | −0.5 |
+
+**For unanswerable questions:**
+
+| Model's response | Points |
+|---|---|
+| Correctly says it's not in the documents | +1 |
+| Gives any answer | −0.5 (hallucination) |
+
+Retrieval quality, meaning whether the correct source document(s) were retrieved, is reported to each team as feedback but doesn't count toward the score.
+
+### Scoring Examples
+
+**Documents used in these examples:**
+- **Doc A:** *Attention Is All You Need* (Vaswani et al., 2017)
+- **Doc B:** *Harnessing the Universal Geometry of Embeddings* (vec2vec; Jha, Zhang, Shmatikov, Morris)
+
+**Single-document question (Doc A)**
+
+**Q:** Why does the Transformer divide by √d_k in scaled dot-product attention?
+**Ground truth:** For large values of d_k, the dot products grow large in magnitude and push the softmax into regions with extremely small gradients. Scaling by 1/√d_k counteracts this.
+
+| Model's answer | Result | Points |
 |---|---|---|
-| Group 1 | Hieu, Ha | [LangChain](https://www.udemy.com/course/langchain/) |
-| Group 2 | Huy, Tri | [FastAPI - The Complete Course 2026](https://www.udemy.com/course/fastapi-the-complete-course/) |
+| "Large d_k makes dot products large, which pushes softmax into regions with tiny gradients. Dividing by √d_k fixes that." | Correct | +1 |
+| "To normalize the values so training is more stable." | Partially correct (vague, misses the softmax/gradient reason) | +0.5 |
+| "I don't know." | Abstained | 0 |
+| "To reduce the memory cost of storing the attention matrix." | Hallucinated | −0.5 |
 
+**Single-document question (Doc B)**
 
-## Group 1: Hieu & Ha
+**Q:** What training losses does vec2vec use to learn its translation?
+**Ground truth:** Adversarial losses and cycle consistency, used to encode embeddings into a shared latent space and decode them with minimal loss. The paper also uses a vector space preservation loss to keep pairwise relationships between embeddings consistent under translation.
 
-- **Core:** through "Let's Talk About LLM Applications In Production" — 10h08m
-- **Extended:** LangGraph (weeks 5–6) and MCP Server / Deep Agent tooling (week 7) — +6h45m
-- **Covers:** LangChain, agents & function calling, RAG/vector databases, basic deployment, LangGraph, MCP servers
-
-| Week | Sections | Time |
+| Model's answer | Result | Points |
 |---|---|---|
-| 1 — Foundations | Introduction · GIST of LangChain · GIST of AI Agents · Agents Under The Hood (1/4) · [Layer 1] ReAct Loop | 2h54m |
-| 2 — Function Calling & RAG | [Layer 2] Raw Function Calling · [Layer 3] ReAct Prompt · Function Calling · GIST of RAG | 3h00m |
-| 3 — Applied Project | Building a documentation assistant | 2h16m |
-| 4 — Prompt Eng & Production | Prompt Engineering Theory · LLM Applications In Production | 2h00m |
-| 5 — LangGraph (Part 1) | Introduction to LangGraph | 2h15m |
-| 6 — LangGraph (Part 2) | Introduction to LangGraph | 2h15m |
-| 7 — MCP Server | Useful tools when developing LLM applications · Deep Agent | 2h15m |
+| "Adversarial loss and cycle-consistency loss, plus a loss that preserves pairwise relationships between embeddings." | Correct | +1 |
+| "It uses adversarial training." | Partially correct (misses cycle consistency) | +0.5 |
+| "It's trained with contrastive loss on paired sentences." | Hallucinated (vec2vec uses no paired data) | −0.5 |
 
----
+**Multi-document question (Doc A + Doc B)**
 
-## Group 2: Huy & Tri
+**Q:** Compare the training data each method needs. Does each one require paired examples?
+**Ground truth:** The Transformer is trained on parallel sentence pairs (WMT 2014 English–German and English–French), so it requires paired data (Doc A). vec2vec is the first method to translate embeddings from one model's space to another without paired data (Doc B).
 
-- **Core:** whole course minus skips — 13h09m
-- **Skip:** Python Installation & Refresher, Git - Version Control, (Deprecated FastAPI) section
-- **Covers:** FastAPI routing, auth, database, testing, full-stack project, deployment
-
-| Week | Sections | Time |
+| Model's answer | Result | Points |
 |---|---|---|
-| 1 — Basics & Core Projects | Introduction · Overview · Setup & Installation · Project 1 (Request Method Logic) · Project 2 (Move Fast) · Project 3 (RESTful APIs) · Setup Database | 4h16m |
-| 2 — API Methods | API Request Methods | 2h54m |
-| 3 — Auth | Authentication & Authorization · Authenticate Requests | 2h00m |
-| 4 — Production DB & Migrations | Large Production Database Setup · Project 3.5 (Alembic Migration) | 2h10m |
-| 5 — Testing | Project 4 (Unit & Integration Testing) | 2h21m |
-| 6 — Full Stack Capstone & Deployment | Project 5 (Full Stack Application) · Deploying FastAPI Applications | 2h03m |
+| "The Transformer needs paired source/target sentences from WMT 2014. vec2vec needs no paired data and learns the mapping unsupervised." | Correct | +1 |
+| "vec2vec doesn't need paired data." | Partially correct (only used Doc B) | +0.5 |
+| "The documents don't give enough information to compare them." | Abstained | 0 |
+| "Both need paired data, since both are translation methods." | Hallucinated | −0.5 |
 
----
+**Unanswerable question**
 
-## Team Agent Project
+**Q:** What BLEU score does vec2vec achieve on WMT 2014 English–German?
+**Ground truth:** Not in the documents. vec2vec translates embeddings between models, not text between languages, and isn't evaluated with BLEU.
 
-### Purpose
+| Model's answer | Result | Points |
+|---|---|---|
+| "vec2vec isn't evaluated on WMT or with BLEU. It translates embeddings between model spaces, not languages." | Correct | +1 |
+| "vec2vec achieves 28.4 BLEU on English–German." | Hallucinated (borrowed the Transformer's number) | −0.5 |
 
-1. Combine what we learn from the LangChain and FastAPI courses
-2. Build an agent that is useful for the group
+## Final Score
 
-### Deadline: 4 weeks
+- **60%:** final evaluation score
+- **40%:** Q&A performance across all meetings, judged by Huy on how well each member explains their own system
 
-**Flow 1 — Data ingestion:**
-Upload data to shared folder → Ingestion Pipeline (manually/automatically) → vector database.
+## Timeline
 
-**Flow 2 — Usage:**
-Ask question → Knowledge Retrieval from Vector Database → Answer Question
+- **Start:** Sunday, October 11
+- **Weekly meetings:** October 18, October 25
+- **Final evaluation and presentation:** Sunday, November 1
 
-**Use cases:**
+## Final Deliverables (Nov 1)
 
-1. What did our team cover last week?
-2. What is the Cockroach project about?
-3. What is LangChain, what is Alembic, and what are their references?
-4. Add a customized tool (quiz maker)
-5. How do you downgrade a database using Alembic? Provide a code example — Tri's PPT and Tri's code as an example.
-
-**Architecture:**
-
-1. **Shared folder** (managed by everyone)
-   - Google Drive: blob data (PPT, docs, PDF)
-   - GitHub (code) — next phase
-2. **Vector database:** FAISS, Pinecone, SQL (each person can use their own method)
-3. **Retrieval:** [Hugging Face](https://huggingface.co/), Ollama — research more about models
-
-**Next steps:**
-
-1. Everyone uploads something to the shared database
-2. Start building and push your code to the [GitHub repo](https://github.com/williamhuybui/cockroach-survivor-learn)
-3. 30 minutes to show what you've built/plan at the next meeting
-
-**Rules:**
-
-- Use only resources from our two courses
-- Limit AI usage
+- The team's folder in the shared repo, with a README explaining the architecture
+- Live demo
+- Final evaluation score
+- Final presentation and Q&A
