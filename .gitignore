@@ -1,6 +1,14 @@
+# Google OAuth credentials
 client_secrets.json
-.claude
-__pycache__
-
-.venv
 credentials.json
+
+# Python environment and cache
+.venv/
+__pycache__/
+
+# Local development
+.claude/
+
+# Generated RAG data
+connect_to_google_drive/downloaded_papers/
+connect_to_google_drive/research_chunks.jsonl
