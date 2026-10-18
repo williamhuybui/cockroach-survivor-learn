@@ -1,0 +1,7 @@
+{
+  "updated": null,
+  "teams": [
+    {"id": "team1", "name": "Team 1", "captain": "Hieu", "members": ["Hieu", "Trang"], "runs": []},
+    {"id": "team2", "name": "Team 2", "captain": "Ha", "members": ["Ha", "Tri"], "runs": []}
+  ]
+}

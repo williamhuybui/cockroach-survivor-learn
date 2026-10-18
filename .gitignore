@@ -16,3 +16,8 @@ tmp/
 
 # Python cache
 __pycache__/
+
+# Hidden evaluation data (contains test answers) and raw eval results
+Huy_code/question_set.csv
+Huy_code/test_set.csv
+Huy_code/eval_results/
