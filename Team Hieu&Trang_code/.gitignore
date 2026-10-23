@@ -1,0 +1,13 @@
+.venv/
+.venv-research/
+data/
+.ruff_cache/
+.env
+__pycache__/
+.pytest_cache/
+*.pyc
+sources.local.json
+synced_sources/
+requirements.lock.txt
+client_secrets.json
+credentials.json
