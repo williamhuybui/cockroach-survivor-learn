@@ -91,16 +91,39 @@ def list_tree(drive: GoogleDrive, folder_id: str):
 
 
 def download_supported(item, output_dir: Path):
-    """Download a PDF; other Drive files are outside this research phase."""
+    """
+    Download PDF files safely from Google Drive.
+
+    - Skip non-PDF files.
+    - Download to a temporary file first.
+    - Rename the temporary file after a successful download.
+    - Remove the temporary file if the download fails.
+    """
+
     original = safe_name(item["title"])
-    extension = Path(original).suffix.lower()
-    if extension != ".pdf":
+
+    if Path(original).suffix.lower() != ".pdf":
         print(f"SKIP non-PDF Drive file: {item['title']}")
         return None
-    target = output_dir / f"{item['id']}_{original}"
-    item.GetContentFile(str(target))
-    return target
 
+    # Final PDF location
+    target = output_dir / f"{item['id']}_{original}"
+
+    # Temporary download location
+    temp = target.with_name(target.name + ".tmp")
+
+    try:
+        # Step 1: Download into the temporary file
+        item.GetContentFile(str(temp))
+
+        # Step 2: Replace the final file after successful download
+        temp.replace(target)
+
+    finally:
+        # Step 3: Remove leftover temporary files
+        temp.unlink(missing_ok=True)
+
+    return target
 
 def sync(
     folder_ids: list[str],

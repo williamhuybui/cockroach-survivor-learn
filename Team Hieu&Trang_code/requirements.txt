@@ -14,3 +14,5 @@ PyDrive2>=1.21,<2
 pytest>=8,<10
 httpx>=0.27,<1
 tzdata>=2025.1
+python-dotenv
+PyDrive2
