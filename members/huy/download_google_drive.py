@@ -3,7 +3,7 @@ from pathlib import Path
 from pydrive2.auth import GoogleAuth, RefreshError
 from pydrive2.drive import GoogleDrive
 
-repo = Path(__file__).resolve().parent.parent
+repo = Path(__file__).resolve().parents[2]
 out_dir = repo / "tmp"
 
 # Google-native files can't be downloaded as-is, so export them to a normal format

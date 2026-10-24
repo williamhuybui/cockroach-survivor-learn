@@ -1,14 +1,14 @@
 """Run a team's submitted service against the hidden test set and update the leaderboard.
 
 Usage (from the repo root):
-  python Huy_code/evaluate.py team1 --mode practice        # weekly practice run
-  python Huy_code/evaluate.py team2 --mode final           # Nov 1 final run
-  python Huy_code/evaluate.py team1 --mode final --rescore Huy_code/eval_results/<file>.csv
+  python members/huy/evaluate.py team1 --mode practice        # weekly practice run
+  python members/huy/evaluate.py team2 --mode final           # Nov 1 final run
+  python members/huy/evaluate.py team1 --mode final --rescore members/huy/eval_results/<file>.csv
       # re-score after you fixed verdicts by hand in the results CSV
 
 Each team's service must expose POST <url> {"question": "..."} -> {"answer": "...", "sources": [...]}.
-URLs live in Huy_code/teams.json. The judge is a local Ollama model (default gemma3).
-Per-question results (they contain the hidden answers) go to Huy_code/eval_results/ (gitignored);
+URLs live in members/huy/teams.json. The judge is a local Ollama model (default gemma3).
+Per-question results (they contain the hidden answers) go to members/huy/eval_results/ (gitignored);
 docs/leaderboard.json (public) gets only team, score and date; the full breakdown stays in eval_results/.
 """
 import argparse
@@ -22,7 +22,7 @@ from pathlib import Path
 import requests
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parent
+ROOT = HERE.parents[1]
 TEST_SET = HERE / "test_set.csv"
 TEAMS = HERE / "teams.json"
 BOARD = ROOT / "docs" / "leaderboard.json"

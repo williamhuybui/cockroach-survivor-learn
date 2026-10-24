@@ -7,7 +7,7 @@ stage audits, cold/warm measurement and human review. Retrieval settings are unc
 
 ## 1 Code tree
 
-Start in `Reagan_code`. Files below are source code unless marked generated.
+Start in `members/reagan`. Files below are source code unless marked generated.
 
 ```text
 README.md                    Setup and operating commands

@@ -41,7 +41,7 @@ from langgraph.graph import StateGraph, START, END
 
 csv.field_size_limit(sys.maxsize)  # the content column is huge
 MAX_CHARS = 8000  # how much of the document the model sees (keeps it inside Ollama's context)
-TMP_DIR = Path(__file__).resolve().parent.parent / "tmp"
+TMP_DIR = Path(__file__).resolve().parents[2] / "tmp"
 
 
 def ask_llm(prompt: str) -> str:

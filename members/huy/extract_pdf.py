@@ -3,7 +3,7 @@ import csv
 from pathlib import Path
 from pypdf import PdfReader
 
-tmp_dir = Path(__file__).resolve().parent.parent / "tmp"
+tmp_dir = Path(__file__).resolve().parents[2] / "tmp"
 table_path = tmp_dir / "pdf_table.csv"
 
 rows = []
