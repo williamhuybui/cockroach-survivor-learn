@@ -1,0 +1,16 @@
+python-dotenv
+gdown
+pypdf
+python-docx
+python-pptx
+openpyxl
+pandas
+chromadb
+langchain-core
+langchain-text-splitters
+langchain-chroma
+langchain-ollama
+langchain-experimental
+google-api-python-client
+google-auth
+fonttools
