@@ -38,17 +38,29 @@ Reply with a JSON list of file names and nothing else, for example ["01_A.pdf", 
 )
 
 SYNTH_PROMPT = ChatPromptTemplate.from_template(
-    """You answer a question that involves several research papers, using ONLY the evidence below.
-The evidence is grouped by paper. Cover EVERY paper listed. If a paper's evidence does not
-contain what is needed, say so for that paper instead of guessing.
-After each claim, cite the source like [file p.page].
+    """You answer questions involving several research papers using ONLY the evidence below.
 
+Rules:
+- Cover EVERY paper mentioned in the question.
+- Answer directly and concisely.
+- Use only facts explicitly supported by the retrieved evidence.
+- If a paper's evidence does not contain the requested information, say "not stated in the retrieved evidence" for that paper.
+- After each factual claim, copy the EXACT source citation from the evidence.
+- A citation must include the real filename and page number.
+- For example, if the evidence contains [04_BERT.pdf p.3], write [04_BERT.pdf p.3].
+- NEVER use placeholders such as [file p.4] or [file p.page].
+- NEVER invent filenames, page numbers, or numeric source references.
+- Do not cite a paper or page unless that exact citation appears in the evidence.
+- Do not substitute general knowledge for missing evidence.
+
+Evidence:
 {evidence}
 
 Question: {question}
 
 Answer:"""
 )
+
 
 
 def norm(text: str) -> str:
