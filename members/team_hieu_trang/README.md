@@ -133,6 +133,106 @@ and conversation ID. The workflow chooses retrieval internally; users do not
 construct filter objects. Comparison retrieval can scope itself to discovered
 paper titles. Offline evaluation calls the same Python answer function directly.
 
+
+### Inspect PDF sections and chunks
+
+Use `tests/inspect_chunks.py` to inspect how research PDFs are processed before embedding and indexing.
+
+The script uses the existing `extract_sections()` and `chunk_sections()` functions from `app/document_processing.py`.
+
+It helps evaluate:
+- Section detection and heading accuracy.
+- Section boundaries and page locations.
+- Chunk size distribution.
+- Chunk content and readability.
+- Section and child chunk metadata.
+
+#### Usage
+
+Run the commands from the project root with the Python environment activated.
+
+**macOS / Linux**
+
+```bash
+# Inspect the default paper: Attention Is All You Need
+PYTHONPATH=. python tests/inspect_chunks.py
+
+# Inspect another paper by partial filename
+PYTHONPATH=. python tests/inspect_chunks.py "Chinchilla"
+
+# Inspect BERT
+PYTHONPATH=. python tests/inspect_chunks.py "BERT"
+
+# Display the first 10 chunks
+PYTHONPATH=. python tests/inspect_chunks.py --samples 10
+
+# Inspect a specific PDF using its path
+PYTHONPATH=. python tests/inspect_chunks.py "/path/to/paper.pdf"
+```
+
+**Windows PowerShell**
+
+```powershell
+# Inspect the default paper
+.\.venv-research\Scripts\python.exe -m tests.inspect_chunks
+
+# Or run the script directly from the project root
+$env:PYTHONPATH = "."
+.\.venv-research\Scripts\python.exe tests\inspect_chunks.py
+
+# Inspect another paper
+.\.venv-research\Scripts\python.exe tests\inspect_chunks.py "Chinchilla"
+
+# Display 10 chunks
+.\.venv-research\Scripts\python.exe tests\inspect_chunks.py --samples 10
+```
+
+#### Arguments
+
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `paper` | PDF filename, partial filename, or file path | `Attention` |
+| `--samples` | Number of sample chunks to display | `5` |
+
+When no paper is specified, the script searches for **Attention Is All You Need**.
+
+For partial filenames, the script searches recursively under `synced_sources/drive/`. If multiple PDFs match, provide a more specific name or an explicit path.
+
+### Inspection output
+
+The script displays three sections:
+
+1. **Paper summary and extracted sections**
+   - Document classification.
+   - Total number of sections and chunks.
+   - Detected section headings.
+   - Page locations and section lengths.
+
+2. **Chunk statistics**
+   - Minimum, maximum, average, and median chunk lengths.
+   - Number of chunks shorter than 200 characters.
+   - Number of chunks exceeding `MAX_CHUNK_CHARACTERS`.
+
+3. **Sample chunks**
+   - Actual chunk text.
+   - Section heading and page location.
+   - `section_index` and `child_index`.
+   - Extraction strategy and character length.
+
+#### What to check
+
+Review the extracted sections before evaluating chunk quality.
+
+- Are major paper headings detected correctly?
+- Does each section contain the appropriate content?
+- Are chunk sizes within the configured limit?
+- Are chunks readable and meaningful independently?
+- Do chunk metadata and locations match the source PDF?
+
+The script is read-only. It does not generate embeddings, update ChromaDB, or modify source PDFs.
+
+**Note:** This is a manual inspection tool, not an automated quality evaluation. Chunk size compliance does not guarantee good semantic boundaries or retrieval performance.
+
 ## Limits
 
 PDF extraction is text-based. Scans need OCR; figures, equations, tables and
