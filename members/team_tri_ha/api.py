@@ -1,15 +1,29 @@
+
 from functools import lru_cache
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from langchain_core.output_parsers import StrOutputParser
 
-from rag import config
-from rag.models import get_embeddings, get_llm, get_vectorstore
-from phase2_ask import PROMPT, format_context
+from rag.agent import Agent
 
 
 app = FastAPI(title="Team Tri-Ha Research RAG Agent")
+
+BASE_DIR = Path(__file__).resolve().parent
+
+app.mount(
+    "/static",
+    StaticFiles(directory=BASE_DIR / "static"),
+    name="static"
+)
+
+
+@app.get("/")
+def home():
+    return FileResponse(BASE_DIR / "static" / "index.html")
 
 
 class RAGRequest(BaseModel):
@@ -23,41 +37,19 @@ class RAGResponse(BaseModel):
 
 @lru_cache(maxsize=1)
 def load_rag():
-    embeddings = get_embeddings(fake=False)
-    store = get_vectorstore(
-        embeddings,
-        config.chroma_dir(fake=False)
-    )
-    llm = get_llm(fake=False)
-    return store, llm
+    return Agent(multi_mode="per-paper")
 
 
 @app.post("/team-tri-ha/rag-agent", response_model=RAGResponse)
 @app.post("/team1/rag-agent", response_model=RAGResponse)
 def rag_agent(request: RAGRequest):
     try:
-        store, llm = load_rag()
+        agent = load_rag()
 
-        results = store.similarity_search_with_score(
-            request.query,
-            k=config.TOP_K
-        )
+        result = agent.ask(request.query)
 
-        docs = [doc for doc, score in results]
-        context = format_context(docs)
-
-        if not docs:
-            return RAGResponse(
-                answer="I could not find this in the documents.",
-                context=""
-            )
-
-        chain = PROMPT | llm | StrOutputParser()
-
-        answer = chain.invoke({
-            "context": context,
-            "question": request.query
-        })
+        answer = result["answer"]
+        context = "\n\n".join(result["context"])
 
         return RAGResponse(
             answer=answer,

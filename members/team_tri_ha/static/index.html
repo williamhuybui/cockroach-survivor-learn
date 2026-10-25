@@ -1,0 +1,196 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Tri-Ha Research AI</title>
+
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+    <main class="workspace">
+
+        <!-- HEADER -->
+        <header class="site-header">
+
+            <div class="brand">
+                <span class="brand-icon">📖</span>
+
+                <div>
+                    <h1>Tri-Ha Research AI</h1>
+                    <p>ACADEMIC RESEARCH DESK</p>
+                </div>
+            </div>
+
+            <span class="header-label">
+                Research Workspace
+            </span>
+
+        </header>
+
+
+        <!-- MAIN TWO-COLUMN LAYOUT -->
+        <div class="research-layout">
+
+            <!-- LEFT: QUESTION PANEL -->
+            <section class="question-card">
+
+                <div class="question-intro">
+                    <h2>Ask a research question</h2>
+                    <p>
+                        Explore 39 research papers with
+                        evidence-grounded AI answers.
+                    </p>
+                </div>
+
+                <label for="question" class="input-label">
+                    Your question
+                </label>
+
+                <textarea
+                    id="question"
+                    rows="4"
+                    placeholder="What would you like to investigate?"
+                ></textarea>
+
+                <div class="question-actions">
+                    <button id="askButton" type="button">
+                        Ask Research AI
+                    </button>
+                </div>
+
+
+                <!-- SUGGESTED QUESTIONS -->
+                <div class="suggestions">
+
+                    <h3>Explore research topics</h3>
+
+                    <p class="suggestions-description">
+                        Not sure where to start? Try one of these questions.
+                    </p>
+
+                    <div class="suggestion-list">
+
+                        <button
+                            type="button"
+                            class="suggestion-button"
+                            data-question="What is Retrieval-Augmented Generation?"
+                        >
+                            What is Retrieval-Augmented Generation?
+                        </button>
+
+                        <button
+                            type="button"
+                            class="suggestion-button"
+                            data-question="How does vector search work?"
+                        >
+                            How does vector search work?
+                        </button>
+
+                        <button
+                            type="button"
+                            class="suggestion-button"
+                            data-question="What are the limitations of Retrieval-Augmented Generation?"
+                        >
+                            What are the limitations of RAG?
+                        </button>
+
+                    </div>
+                </div>
+
+            </section>
+
+
+            <!-- RIGHT: RESEARCH RESULTS -->
+            <!-- Hidden until FastAPI returns an answer -->
+            <section
+                class="answer-card"
+                id="resultPanel"
+                hidden
+            >
+
+                <!-- VIEW 1: RESEARCH FINDINGS -->
+                <div id="findingsView">
+
+                    <div class="answer-header">
+
+                        <h2>Research Findings</h2>
+
+                        <button
+                            id="copyButton"
+                            type="button"
+                        >
+                            Copy answer
+                        </button>
+
+                    </div>
+
+                    <!-- AI-generated answer -->
+                    <div
+                        id="answer"
+                        aria-live="polite"
+                    ></div>
+
+                    <div class="evidence-actions">
+
+                        <button
+                            id="viewEvidenceButton"
+                            type="button"
+                        >
+                            View supporting evidence
+                        </button>
+
+                    </div>
+
+                </div>
+
+
+                <!-- VIEW 2: SUPPORTING EVIDENCE -->
+                <!-- Hidden until the user requests references -->
+                <div id="evidenceView" hidden>
+
+                    <div class="answer-header">
+
+                        <h2>Supporting Evidence</h2>
+
+                        <button
+                            id="backToAnswerButton"
+                            type="button"
+                        >
+                            Back to answer
+                        </button>
+
+                    </div>
+
+                    <!-- JavaScript will create source cards here -->
+                    <div id="sourceCards"></div>
+
+                </div>
+
+
+                <!-- Keep raw context for JavaScript -->
+                <!-- Do not display raw context directly -->
+                <pre id="context" hidden></pre>
+
+            </section>
+
+        </div>
+
+
+        <!-- FOOTER -->
+        <footer>
+            Powered by FastAPI · ChromaDB · Ollama
+        </footer>
+
+    </main>
+
+    <!-- Connect frontend to FastAPI -->
+    <script src="/static/app.js" defer></script>
+
+</body>
+</html>
