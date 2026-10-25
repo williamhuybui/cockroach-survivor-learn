@@ -273,7 +273,8 @@ def chunk_sections(sections: list[ExtractedSection], title: str) -> list[Documen
 
     chunks = []
     for section_index, section in enumerate(sections):
-        if not section.text:
+        ## The .strip() method removes leading and trailing whitespace.
+        if not section.text.strip():
             continue
         prefix = f"Paper: {title}\n"
         if section.heading:
@@ -306,3 +307,4 @@ def chunk_sections(sections: list[ExtractedSection], title: str) -> list[Documen
                 )
             )
     return chunks
+    
