@@ -16,6 +16,7 @@ GOOGLE_CREDENTIALS = os.getenv("GOOGLE_CREDENTIALS", str(ROOT / "credentials" / 
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 LLM_MODEL = os.getenv("LLM_MODEL", "gemma3:4b")
+LLM_NUM_CTX = int(os.getenv("LLM_NUM_CTX", "8192")) 
 EMBED_MODEL = os.getenv("EMBED_MODEL", "embeddinggemma")
 
 CHUNK_STRATEGY = os.getenv("CHUNK_STRATEGY", "recursive")

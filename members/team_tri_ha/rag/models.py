@@ -12,7 +12,7 @@ def get_embeddings(fake: bool = False):
     from langchain_ollama import OllamaEmbeddings
 
     emb = OllamaEmbeddings(model=config.EMBED_MODEL, base_url=config.OLLAMA_URL)
-    try:
+    try:  # fail early with a clear message instead of a long traceback later
         emb.embed_query("ping")
     except Exception as e:
         raise SystemExit(
@@ -31,7 +31,8 @@ def get_llm(fake: bool = False):
         return FakeListChatModel(responses=["(fake LLM: run without --fake to get a real answer)"])
     from langchain_ollama import ChatOllama
 
-    return ChatOllama(model=config.LLM_MODEL, base_url=config.OLLAMA_URL, temperature=0)
+    # num_ctx: Ollama's default window is small; Phase 3 sends several papers' chunks, so give it room
+    return ChatOllama(model=config.LLM_MODEL, base_url=config.OLLAMA_URL, temperature=0, num_ctx=config.LLM_NUM_CTX)
 
 
 def get_vectorstore(embeddings, persist_dir=None):
@@ -40,5 +41,6 @@ def get_vectorstore(embeddings, persist_dir=None):
         collection_name=COLLECTION,
         embedding_function=embeddings,
         persist_directory=str(persist_dir) if persist_dir else None,
+        # HNSW index + cosine distance: score = 1 - cosine_similarity (smaller = closer)
         collection_metadata={"hnsw:space": "cosine"},
     )
