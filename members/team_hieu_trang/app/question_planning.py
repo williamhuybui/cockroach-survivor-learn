@@ -34,7 +34,28 @@ def plan_question(
         {"role": item["role"], "content": item["content"][:1500]}
         for item in history[-6:]
     ]
-    query = "\n".join([*previous[-1:], question])
+    # query = "\n".join([*previous[-1:], question])
+
+    ## Check relevance of history answer before construct query
+    relevance = check_history_relevance(question, history)
+
+    previous = [
+        item["content"][:1000]
+        for item in history[-4:]
+        if item.get("role") in ("human", "user")
+    ]
+
+    conversation = [
+        {"role": item["role"], "content": item["content"][:1500]}
+        for item in history[-6:]
+    ]
+
+    if relevance["use_history"]:
+        query = "\n".join([*previous[-1:], question])
+    else:
+        query = question
+        conversation = []
+
     titles = [row["title"] for row in papers]
     complex_question = re.search(
         r"\b(compare|comparison|versus|vs|both papers|each paper|which paper|difference between|differ from)\b"
@@ -64,7 +85,8 @@ def plan_question(
         "identify at least two distinct papers. When clarifying return no tasks.",
         {
             "question": question,
-            "recent_user_questions": previous[-1:],
+            "recent_user_questions": previous[-1:]
+                if relevance["use_history"] else [],
             "recent_conversation": conversation,
             "indexed_titles": titles,
         },
@@ -83,3 +105,42 @@ def plan_question(
     if plan.clarification:
         plan.tasks = []
     return plan
+
+
+FOLLOWUP_PATTERN = re.compile(
+    r"\b(it|its|they|them|their|those|that|this|"
+    r"which one|which of them|"
+    r"the previous one|the other one|the second one|"
+    r"that paper|this paper|those papers|"
+    r"the previous paper|the other paper)\b",
+    re.IGNORECASE,
+)
+
+def check_history_relevance(
+    question: str,
+    history: list[dict],
+) -> dict:
+    """Decide whether the current question needs conversation context."""
+
+    previous_questions = [
+        item["content"]
+        for item in history
+        if item.get("role") in ("human", "user")
+    ]
+
+    if not previous_questions:
+        return {
+            "use_history": False,
+            "reason": "No previous questions",
+        }
+
+    if FOLLOWUP_PATTERN.search(question):
+        return {
+            "use_history": True,
+            "reason": "Potential follow-up reference",
+        }
+
+    return {
+        "use_history": False,
+        "reason": "Independent question",
+    }
