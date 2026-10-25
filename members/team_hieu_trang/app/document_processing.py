@@ -27,6 +27,8 @@ SECTION_HEADINGS = {
     "related work",
     "methods",
     "methodology",
+    "evaluation",
+    "experimental setup",
     "experiments",
     "results",
     "discussion",
@@ -108,30 +110,77 @@ def normalize_headings(text: str) -> str:
     )
 
 
+# def styled_heading_lines(page) -> set[str]:
+#     """Find bold or larger PDF lines so table numbers do not become headings."""
+
+#     lines = [
+#         line
+#         for block in page.get_text("dict")["blocks"]
+#         for line in block.get("lines", [])
+#     ]
+#     sizes = Counter()
+#     for line in lines:
+#         for span in line["spans"]:
+#             sizes[round(span["size"], 1)] += len(span["text"])
+#     body_size = sizes.most_common(1)[0][0] if sizes else 0
+#     # PyMuPDF uses bit 16 for bold. Weighting font sizes by text length finds
+#     # the body style rather than a large title that occurs only once.
+#     return {
+#         clean_text("".join(span["text"] for span in line["spans"])).strip()
+#         for line in lines
+#         if any(
+#             span["flags"] & 16 or span["size"] > body_size + 0.5
+#             for span in line["spans"]
+#         )
+#     }
+
 def styled_heading_lines(page) -> set[str]:
-    """Find bold or larger PDF lines so table numbers do not become headings."""
+    """Find lines where most text is bold or larger than body text."""
 
     lines = [
         line
         for block in page.get_text("dict")["blocks"]
         for line in block.get("lines", [])
     ]
+
     sizes = Counter()
+
     for line in lines:
         for span in line["spans"]:
             sizes[round(span["size"], 1)] += len(span["text"])
-    body_size = sizes.most_common(1)[0][0] if sizes else 0
-    # PyMuPDF uses bit 16 for bold. Weighting font sizes by text length finds
-    # the body style rather than a large title that occurs only once.
-    return {
-        clean_text("".join(span["text"] for span in line["spans"])).strip()
-        for line in lines
-        if any(
-            span["flags"] & 16 or span["size"] > body_size + 0.5
-            for span in line["spans"]
-        )
-    }
 
+    body_size = sizes.most_common(1)[0][0] if sizes else 0
+
+    styled_lines = set()
+
+    for line in lines:
+        spans = line["spans"]
+
+        text = clean_text(
+            "".join(span["text"] for span in spans)
+        ).strip()
+
+        if not text:
+            continue
+
+        total_chars = sum(len(span["text"]) for span in spans)
+
+        if total_chars == 0:
+            continue
+
+        styled_chars = sum(
+            len(span["text"])
+            for span in spans
+            if (span["flags"] & 16)
+            or span["size"] > body_size + 0.5
+        )
+
+        styled_ratio = styled_chars / total_chars
+
+        if styled_ratio >= 0.7:
+            styled_lines.add(text)
+
+    return styled_lines
 
 def paper_sections(
     pages: list[ExtractedSection], styles: dict[str, set[str]] | None = None
@@ -182,34 +231,41 @@ def paper_sections(
 
 
 def extract_sections(path: Path) -> tuple[str, list[ExtractedSection]]:
-    """Read every PDF page; use section boundaries when confidently detected."""
+    """Extract PDF text by section, falling back to pages when needed."""
 
     if path.suffix.lower() != ".pdf":
-        raise ValueError("Only research PDF files are supported")
+        raise ValueError("Only PDF files are supported")
+
     pages = []
     styles = {}
+
     with pymupdf.open(path) as pdf:
-        for number, page in enumerate(pdf, 1):
-            # Preserve the PDF's native order: geometric sorting can interleave columns.
+        for number, page in enumerate(pdf, start=1):
+            location = f"page {number}"
             text = clean_text(page.get_text("text")).strip()
+
             if not text:
-                print(
-                    f"WARNING {path.name}, page {number}: no text; OCR is not configured"
-                )
-            pages.append(ExtractedSection(f"page {number}", text, "pdf-page"))
-            styles[f"page {number}"] = styled_heading_lines(page)
-    document_type = classify_document(path, pages)
-    if document_type == "sectioned_paper":
-        sections = paper_sections(pages, styles)
-        main_sections = [
-            section
-            for section in sections
-            if section.heading.casefold()
-            not in SPECIAL_HEADINGS | {"title and authors"}
-        ]
-        if len(main_sections) >= 2:
-            return document_type, sections
-    return "pdf_page_fallback", pages
+                print(f"WARNING: {path.name}, {location}: no text extracted")
+
+            pages.append(ExtractedSection(location, text, "pdf-page"))
+            styles[location] = styled_heading_lines(page)
+
+    if classify_document(path, pages) != "sectioned_paper":
+        return "pdf_page_fallback", pages
+
+    sections = paper_sections(pages, styles)
+
+    main_count = sum(
+        section.heading.casefold()
+        not in SPECIAL_HEADINGS | {"title and authors"}
+        for section in sections
+    )
+
+    if main_count < 2:
+        print(f"WARNING: {path.name}: insufficient section boundaries")
+        return "pdf_page_fallback", pages
+
+    return "sectioned_paper", sections
 
 
 def chunk_sections(sections: list[ExtractedSection], title: str) -> list[Document]:
