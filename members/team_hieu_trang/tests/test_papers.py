@@ -136,3 +136,78 @@ def test_table_values_do_not_become_headings_when_font_is_plain():
 
 def test_malformed_characters_are_cleaned():
     assert clean_text("model\x00 size \ud835") == "model size ?"
+
+
+def test_child_indices_reset_for_each_section():
+    sections = [
+        ExtractedSection(
+            "page 1", "word " * 1500,
+            "paper-section", "1 Introduction"
+        ),
+        ExtractedSection(
+            "page 3", "word " * 1500,
+            "paper-section", "2 Methods"
+        ),
+    ]
+
+    chunks = chunk_sections(sections, "RAG.pdf")
+
+    intro = [
+        chunk for chunk in chunks
+        if chunk.metadata["section_index"] == 0
+    ]
+
+    methods = [
+        chunk for chunk in chunks
+        if chunk.metadata["section_index"] == 1
+    ]
+
+    assert len(intro) > 1
+    assert len(methods) > 1
+
+    assert [c.metadata["child_index"] for c in intro] == list(range(len(intro)))
+    assert [c.metadata["child_index"] for c in methods] == list(range(len(methods)))
+
+
+def test_whitespace_only_section_produces_no_chunks():
+    ### This prevents whitespace-only chunks from reaching the embedding pipeline.
+    sections = [
+        ExtractedSection("page 1", "   \n  ", "pdf-page")
+    ]
+
+    assert chunk_sections(sections, "Scan.pdf") == []
+
+
+def test_actual_research_paper():
+    pdf_files = list(
+        Path("synced_sources/drive").rglob("*Attention*All*Need*.pdf")
+    )
+
+    assert pdf_files, "Attention Is All You Need PDF not found"
+
+    path = pdf_files[0]
+
+    document_type, sections = extract_sections(path)
+    chunks = chunk_sections(sections, path.stem)
+
+    print("\nDocument type:", document_type)
+    print("Total sections:", len(sections))
+    print("Total chunks:", len(chunks))
+
+    print("\nDETECTED SECTIONS:")
+    for section in sections:
+        print(section.heading, "|", section.location)
+
+    print("\nFIRST FIVE CHUNKS:")
+    for index, chunk in enumerate(chunks[:5]):
+        print(f"\n--- Chunk {index} ---")
+        print("Location:", chunk.metadata["location"])
+        print("Child index:", chunk.metadata["child_index"])
+        print("Length:", len(chunk.page_content))
+        print(chunk.page_content)
+
+    assert len(chunks) > 0
+    assert all(
+        len(chunk.page_content) <= MAX_CHUNK_CHARACTERS
+        for chunk in chunks
+    )
