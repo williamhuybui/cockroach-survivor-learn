@@ -1,12 +1,21 @@
 # Prompt: plug your agent into the evaluation gateway
 
-Copy everything below the line into your coding agent. Set TEAM_ID first (team1 = Hieu & Trang, team2 = Ha & Tri).
+Copy everything below the line into your coding agent. The only thing to change is the first line: write 1 or 2.
 
 ---
 
-Your job: implement our team's RAG agent as one Python function inside `api_view.py` at the repo root, so the course evaluation gateway can call it. `TEAM_ID = <team1 or team2>`.
+I am on team **<1 or 2>**. Your task: fix our team's placeholder in `api_view.py` (repo root) so the course evaluation gateway can call our RAG agent. Find our row in this table:
 
-## What to do
+| Team | Members | Placeholder to replace in `api_view.py` | Our folder | Our existing agent |
+|------|---------|------------------------------------------|------------|--------------------|
+| 1 | Hieu & Trang | `team1_agent = not_implemented("team1")` | `members/team_hieu_trang/` | FastAPI app in `app/`: `app/main.py` (`POST /api/chat`), `app/services.py` (`respond()`, `answer_with_context()`), retrieval in `app/retrieval.py` |
+| 2 | Ha & Tri | `team2_agent = not_implemented("team2")` | `members/team_tri_ha/` | `rag/` package: `rag/agent.py` (`Agent` class), `rag/config.py` (settings); `phase3_ask.py` shows how to ask a question, `eval_dev.py` how we score on the dev set |
+
+Import notes:
+- Team 1's code is a package named `app`. Team 2's code does `from rag import config`, so `members/team_tri_ha/` must be on `sys.path` when it runs. Do any `sys.path` change inside the function, not globally, and make sure it cannot clash with other teams' `app` packages.
+- Ignore `members/ha/` (an unrelated demo), and every folder that is not ours.
+
+## How to fix the placeholder
 
 1. Open `api_view.py` and find your section, marked `# === TEAM 1: ... ===` or `# === TEAM 2: ... ===`. It currently contains a placeholder:
 
@@ -35,6 +44,7 @@ Your job: implement our team's RAG agent as one Python function inside `api_view
 - Every question is independent. Do not rely on a session or on chat history.
 - If the documents do not contain the answer, say so explicitly, e.g. "I don't know - this is not in the documents." Wrong answers cost -0.5, an honest "I don't know" costs 0, and for questions that cannot be answered from the documents it scores +1.
 - Handle your own failures: return an `answer` that explains what went wrong instead of letting an exception escape for normal questions.
+- Make the function thread-safe: the evaluation asks several questions at once (4 by default), so build indexes and load models once, behind a lock, not per call.
 - Keep it under about 60 seconds per question; the evaluation asks every question in turn.
 
 ## Do not
@@ -44,7 +54,7 @@ Your job: implement our team's RAG agent as one Python function inside `api_view
 
 ## How to check your work
 
-From the repo root run `uvicorn api_view:app --port 8000`, then:
+From the repo root run `uvicorn api_view:app --port 8000`, then (TEAM_ID is `team1` or `team2`, whichever is ours):
 
 1. `curl localhost:8000/TEAM_ID/health` returns `{"ok": true}` (a 501 means the placeholder is still there).
 2. `curl -X POST localhost:8000/TEAM_ID/rag-agent -H 'Content-Type: application/json' -d '{"question": "What BLEU score does the Transformer get on WMT 2014 English-to-German?"}'` returns `{"answer": "...", "sources": ["..."]}`.

@@ -67,3 +67,67 @@ footer { text-align:center; color:var(--muted); padding:30px 0 40px; }
 .dl-dates { display:flex; justify-content:space-between; font-size:.8rem; color:var(--muted); }
 .onerule { font-size:1.2rem; margin:8px 0 0; }
 .onerule i { color:var(--accent); }
+
+#board tr.team-row { cursor:pointer; }
+#board .hist-toggle { font-size:.8rem; margin-left:6px; }
+#board td.score .pct { font-size:.95rem; font-weight:700; color:var(--text, #fff); margin-left:6px; }
+#board tr.history td { padding-top:0; border-top:0; }
+#board .hist-row { display:grid; grid-template-columns:90px 110px 110px 1fr; gap:8px; padding:4px 0; font-size:.9rem; }
+
+/* compact layout: everything fits on one screen */
+.hero { padding: 22px 0 8px; }
+h1 { font-size: clamp(2rem, 5vw, 2.8rem); margin: 8px 0 2px; }
+.hero p { font-size: 1rem; margin: 0 0 12px; }
+.deadline { margin: 0 auto 12px; padding: 8px 14px; }
+.dl-bar { height: 8px; margin: 6px 0 2px; }
+.versus #teams { gap: 26px; margin-bottom: 4px; }
+.versus .card { min-width: 150px; padding: 8px 14px; font-size: .85rem; }
+.versus .card h4 { margin: 0; }
+.panel { margin: 10px 0; padding: 14px 20px; }
+.tabs { margin: 8px 0; }
+th, td { padding: 7px 10px; }
+footer { padding: 8px 0 14px; font-size: .85rem; }
+
+/* ---------- motion ---------- */
+h1 em { background-size: 200% 100%; animation: shimmer 5s linear infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+h1 { animation: drop .8s cubic-bezier(.2,.9,.3,1.2) both; }
+@keyframes drop { from { opacity:0; transform: translateY(-18px) scale(.96); } }
+.hero p { animation: fade .8s .15s both; }
+.deadline { animation: rise .7s .2s both; }
+.versus .card { animation: rise .7s both, bob 5s ease-in-out infinite; transition: transform .2s, border-color .2s, box-shadow .2s; }
+.versus .card:nth-child(1) { animation-delay: .3s, 1s; }
+.versus .card:nth-child(2) { animation-delay: .4s, 2s; }
+.versus .card:nth-child(3) { animation-delay: .5s, 3s; }
+.versus .card:hover { border-color: var(--accent); box-shadow: 0 8px 24px rgba(249,115,22,.25); }
+.versus #teams .card + .card::before { animation: pulse 1.6s ease-in-out infinite; }
+.panel { animation: rise .8s .45s both; }
+footer { animation: fade 1s 1s both; }
+@keyframes rise { from { opacity:0; transform: translateY(18px); } }
+@keyframes fade { from { opacity:0; } }
+@keyframes bob { 50% { transform: translateY(-4px); } }
+@keyframes pulse { 50% { transform: translateY(-50%) scale(1.3); opacity:.7; } }
+
+.dl-bar span { background-image: linear-gradient(90deg,#fbbf24,#f97316), repeating-linear-gradient(45deg, rgba(255,255,255,.25) 0 8px, transparent 8px 16px);
+  background-blend-mode: overlay; background-size: 100% 100%, 32px 32px; animation: stripes 1.2s linear infinite; }
+@keyframes stripes { to { background-position: 0 0, 32px 0; } }
+
+#board tr.enter { animation: rise .55s calc(.7s + var(--i) * .12s) both; }
+#board tr.team-row td { transition: background .2s; }
+#board tr.team-row:hover td { background: rgba(251,191,36,.07); }
+#board tr.first td { animation: glow 2.8s ease-in-out infinite; }
+@keyframes glow { 50% { background: rgba(251,191,36,.09); } }
+#board tr.first td:first-child::before { display:inline-block; animation: wiggle 2.4s ease-in-out infinite; transform-origin: 50% 80%; }
+@keyframes wiggle { 0%,80%,100% { transform: rotate(0); } 85% { transform: rotate(-14deg); } 92% { transform: rotate(12deg); } }
+#board .meter { height:5px; width:150px; border-radius:3px; background:var(--line); margin-top:4px; overflow:hidden; }
+#board .meter i { display:block; height:100%; border-radius:3px; background:linear-gradient(90deg,#fbbf24,#f97316); animation: grow 1.1s .3s cubic-bezier(.2,.8,.2,1) both; width: var(--w); }
+@keyframes grow { from { width: 0; } }
+.tabs button { transition: transform .15s, background .2s, border-color .2s; }
+.tabs button:hover { transform: translateY(-2px); border-color: var(--accent); }
+#board .hist-row { animation: fade .35s both; }
+#board .hist-toggle { transition: color .2s; } #board tr.team-row:hover .hist-toggle { color: var(--accent); }
+.bugs span { opacity: .2; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
