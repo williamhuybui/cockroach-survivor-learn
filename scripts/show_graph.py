@@ -1,5 +1,9 @@
-from api_view import chat_graph
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # repo root, so api_view is importable
+from api_view import chat_graph
+
 
 def save_graph_image(graph, path="tmp/graph.png"):
     """Save a compiled LangGraph graph as a PNG image and return the path."""

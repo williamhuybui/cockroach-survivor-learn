@@ -1,7 +1,7 @@
 {
-  "updated": null,
   "teams": [
-    {"id": "team1", "name": "Team 1", "captain": "Hieu", "members": ["Hieu", "Trang"], "runs": []},
-    {"id": "team2", "name": "Team 2", "captain": "Ha", "members": ["Ha", "Tri"], "runs": []}
+    {"id": "team1", "name": "Team 1", "captain": "Hieu", "members": ["Hieu", "Trang"]},
+    {"id": "team2", "name": "Team 2", "captain": "Ha", "members": ["Ha", "Tri"]},
+    {"id": "team3", "name": "Team 3", "captain": "Huy", "members": ["Huy"]}
   ]
 }

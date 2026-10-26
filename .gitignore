@@ -18,6 +18,9 @@ tmp/
 __pycache__/
 
 # Hidden evaluation data (contains test answers) and raw eval results
-members/huy/question_set.csv
-members/huy/test_set.csv
-members/huy/eval_results/
+evaluation/question_set.csv
+evaluation/test_set.csv
+evaluation/eval_results/
+
+# API keys
+.env
