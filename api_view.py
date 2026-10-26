@@ -173,9 +173,42 @@ def not_implemented(team: str):
 
 
 # ============================== TEAM 1: Hieu & Trang ==============================
-team1_agent = not_implemented("team1")
+# team1_agent = not_implemented("team1")
+def team1_agent(question: str) -> dict:
+    """Connect Team 1's existing LangGraph RAG agent to the shared API."""
 
+    from members.team_hieu_trang.app.services import answer_with_context
 
+    result = answer_with_context(
+        question,
+        history=[],
+        capture_evidence=False,
+        require_review=False,
+    )
+
+    # Extract the answer
+    answer = str(result.get("answer") or "").strip()
+
+    if not answer:
+        answer = "I don't know - this is not in the documents."
+
+    # Convert source metadata to document titles
+    sources = []
+
+    for source in result.get("sources") or []:
+        if isinstance(source, dict):
+            title = source.get("title") or source.get("source_url")
+        else:
+            title = source
+
+        if title:
+            sources.append(str(title))
+
+    return {
+        "answer": answer,
+        "sources": list(dict.fromkeys(sources)),
+    }
+    
 # ============================== TEAM 2: Ha & Tri ==================================
 team2_agent = not_implemented("team2")
 
