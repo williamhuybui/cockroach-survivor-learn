@@ -233,6 +233,56 @@ The script is read-only. It does not generate embeddings, update ChromaDB, or mo
 
 **Note:** This is a manual inspection tool, not an automated quality evaluation. Chunk size compliance does not guarantee good semantic boundaries or retrieval performance.
 
+### Chunk Inspection Scoring
+
+The `tests/inspect_chunks.py` script evaluates PDF section extraction and chunking quality using a **rule-based score out of 100**, without requiring an LLM.
+
+The goal is to identify structural issues before embedding chunks into ChromaDB.
+
+#### Scoring Methodology
+
+| Metric | Weight | Description |
+|---|---:|---|
+| Size compliance | 30 | Percentage of chunks within the 1,200-character limit |
+| Metadata completeness | 25 | Presence of `location`, `strategy`, `section_index`, and `child_index` |
+| Content substance | 25 | Chunk length relative to a 200-character threshold; shorter chunks receive partial credit |
+| Content cleanliness | 20 | Percentage of chunks without predefined PDF-noise patterns |
+| **Total** | **100** | **Sum of all four metrics** |
+
+**Calculation:**
+
+- **Size:** `30 × (valid chunks / total chunks)`
+- **Metadata:** `25 × (present fields / expected fields)`
+- **Substance:** `25 × average(min(chunk length / 200, 1))`
+- **Cleanliness:** `20 × (1 - noisy chunks / total chunks)`
+
+The script also flags short sections (under 100 characters), undersized or oversized chunks, missing metadata, and possible PDF artifacts.
+
+#### Usage
+
+Run from the project root:
+
+```bash
+# Default: Attention Is All You Need
+PYTHONPATH=. python tests/inspect_chunks.py
+
+# Inspect another paper
+PYTHONPATH=. python tests/inspect_chunks.py "BERT"
+
+# Display 10 sample chunks
+PYTHONPATH=. python tests/inspect_chunks.py --samples 10
+```
+
+The default filename pattern is `Attention_Is_All_You_Need`, avoiding conflicts with `FlashAttention`.
+
+#### Interpretation
+
+A higher score indicates better compliance with the configured structural checks. However, **the score does not measure semantic coherence, retrieval accuracy, or answer correctness**.
+
+For example, a chunk containing unrelated paragraphs could still receive full points if it meets all four checks.
+
+Use the score alongside manual section/chunk inspection and separate retrieval evaluation. The weights and thresholds are initial heuristics and may be refined after testing multiple research papers.
+
 ## Limits
 
 PDF extraction is text-based. Scans need OCR; figures, equations, tables and

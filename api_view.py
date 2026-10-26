@@ -208,7 +208,7 @@ def team1_agent(question: str) -> dict:
         "answer": answer,
         "sources": list(dict.fromkeys(sources)),
     }
-    
+
 # ============================== TEAM 2: Ha & Tri ==================================
 def team2_agent(question: str) -> dict:
     from members.team_tri_ha.gateway_agent import answer as t2_answer  # imported on first use; adds our folder to sys.path
