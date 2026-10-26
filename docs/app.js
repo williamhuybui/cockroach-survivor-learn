@@ -96,9 +96,9 @@ $("#tabs").addEventListener("click", (e) => {
 load();
 setInterval(load, 20000);  // pick up new scores without a page reload
 
-// deadline bar: Oct 18 -> Nov 1 (2026)
+// deadline bar: Oct 18 -> Nov 8 (2026)
 (function () {
-  const start = new Date(2026, 9, 18), end = new Date(2026, 10, 1, 23, 59, 59), now = new Date();
+  const start = new Date(2026, 9, 18), end = new Date(2026, 10, 8, 23, 59, 59), now = new Date();
   const pct = Math.min(100, Math.max(0, (100 * (now - start)) / (end - start)));
   const days = Math.ceil((end - now) / 864e5);
   $("#dl-fill").style.width = pct.toFixed(1) + "%";

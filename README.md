@@ -27,7 +27,7 @@ Each team has its own channel for discussion, by text or meeting.
 - Both teams use the **same GitHub repo**, and each team works in its own folder (`team1/`, `team2/`).
 - There are no required milestones. Teams work at their own pace.
 
-## Weekly Meeting (Sundays: Oct 18, Oct 25, Nov 1)
+## Weekly Meeting (Sundays: Oct 18, Oct 25, Nov 1, Nov 8)
 
 For each team:
 
@@ -56,7 +56,7 @@ For each team:
 - Each team may run the test set **once per week** to check its progress.
 - Practice scores don't count toward the final result.
 
-### Final Evaluation (Nov 1)
+### Final Evaluation (Nov 8)
 
 Only this evaluation counts. The score rewards correct answers and penalizes hallucination. **Saying "I don't know" is always better than making something up.**
 
@@ -135,10 +135,10 @@ Retrieval quality, meaning whether the correct source document(s) were retrieved
 ## Timeline
 
 - **Start:** Sunday, October 11
-- **Weekly meetings:** October 18, October 25
-- **Final evaluation and presentation:** Sunday, November 1
+- **Weekly meetings:** October 18, October 25, November 1
+- **Final evaluation and presentation:** Sunday, November 8
 
-## Final Deliverables (Nov 1)
+## Final Deliverables (Nov 8)
 
 - The team's folder in the shared repo, with a README explaining the architecture
 - Live demo

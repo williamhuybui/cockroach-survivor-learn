@@ -2,7 +2,7 @@
 
 Usage (from the repo root):
   python evaluation/evaluate.py team1 --mode practice        # weekly practice run
-  python evaluation/evaluate.py team2 --mode final           # Nov 1 final run
+  python evaluation/evaluate.py team2 --mode final           # Nov 8 final run
   python evaluation/evaluate.py team1 --test-set dev_set.csv --limit 5   # self-check on the public dev set
   python evaluation/evaluate.py team1 --mode final --rescore evaluation/eval_results/<file>.csv
       # re-score after you fixed verdicts by hand in the results CSV
