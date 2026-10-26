@@ -14,7 +14,7 @@
 
 - **Judge:** Huy
 - **Team 1:** Hieu (Captain), Trang. Code in `members/team_hieu_trang/`. Plugs into the evaluation as `/team1/rag-agent` by implementing `team1_agent` in `api_view.py`.
-- **Team 2:** Ha (Captain), Tri. Code in `members/ha/`. Plugs into the evaluation as `/team2/rag-agent` by implementing `team2_agent` in `api_view.py`.
+- **Team 2:** Ha (Captain), Tri. Code in `members/team_tri_ha/`. Plugs into the evaluation as `/team2/rag-agent` by implementing `team2_agent` in `api_view.py`.
 - **Team 3:** Huy. Code in `members/team_huy/`. Runs as `/team3/rag-agent` (`team3_agent` in `api_view.py`). Huy's own entry, not on the leaderboard, currently a simple keyword-retrieval placeholder on Gemma 3.
 
 Each team has its own channel for discussion, by text or meeting.
