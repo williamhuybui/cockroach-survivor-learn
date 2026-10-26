@@ -210,7 +210,10 @@ def team1_agent(question: str) -> dict:
     }
     
 # ============================== TEAM 2: Ha & Tri ==================================
-team2_agent = not_implemented("team2")
+def team2_agent(question: str) -> dict:
+    from members.team_tri_ha.gateway_agent import answer as t2_answer  # imported on first use; adds our folder to sys.path
+
+    return t2_answer(question)
 
 
 # ============================== TEAM 3: Huy (code in members/team_huy/agent.py) ===
