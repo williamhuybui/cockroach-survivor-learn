@@ -1,0 +1,803 @@
+/* =========================================
+   TRI-HA RESEARCH AI
+   Modern Academic Research Dashboard
+   ========================================= */
+
+/* 1. Design tokens and typography */
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
+:root {
+    --font-main: "Inter", Arial, sans-serif;
+    --font-heading: "Inter", Arial, sans-serif;
+
+    --background: #f7f9fa;
+    --surface: #ffffff;
+    --surface-soft: #fbfcfd;
+
+    --navy: #20364e;
+    --text: #34475b;
+    --muted: #718092;
+
+    --accent: #147d83;
+    --accent-dark: #0f646b;
+    --accent-light: #e7f4f3;
+
+    --border: #e2e8ed;
+    --border-strong: #cbd5dd;
+
+    --shadow:
+        0 6px 24px rgba(32, 54, 78, 0.045);
+
+    --radius-lg: 16px;
+    --radius-md: 10px;
+}
+
+/* 2. Global styles */
+
+* {
+    box-sizing: border-box;
+}
+
+[hidden] {
+    display: none !important;
+}
+
+html,
+body {
+    margin: 0;
+    min-height: 100%;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    background: var(--background);
+    color: var(--text);
+    font-family: var(--font-main);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+button,
+textarea,
+input {
+    font: inherit;
+}
+
+button {
+    transition:
+        background-color 0.2s ease,
+        border-color 0.2s ease,
+        color 0.2s ease,
+        box-shadow 0.2s ease,
+        transform 0.2s ease;
+}
+
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+}
+
+/* 3. Main workspace */
+
+.workspace {
+    width: 100%;
+    max-width: 1440px;
+    min-height: 100vh;
+    margin: 0 auto;
+    padding: 22px 40px 20px;
+
+    display: flex;
+    flex-direction: column;
+}
+
+/* 4. Header */
+
+.site-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.brand-icon {
+    font-size: 32px;
+    line-height: 1;
+}
+
+.brand h1 {
+    margin: 0;
+    color: var(--navy);
+    font-family: var(--font-heading);
+    font-size: 25px;
+    font-weight: 700;
+    letter-spacing: -0.7px;
+    line-height: 1.25;
+}
+
+.brand p {
+    margin: 6px 0 0;
+    color: var(--accent);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+.header-label {
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+/* 5. Two-column layout */
+
+.research-layout {
+    display: grid;
+    grid-template-columns:
+        minmax(0, 42fr)
+        minmax(0, 58fr);
+    gap: 22px;
+    flex: 1;
+    min-height: 0;
+    padding-top: 24px;
+    align-items: start;
+}
+
+/* 6. Shared cards */
+
+.question-card,
+.answer-card {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 26px;
+
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+}
+
+/* 7. Question panel */
+
+.question-intro h2 {
+    margin: 0 0 9px;
+    color: var(--navy);
+    font-family: var(--font-heading);
+    font-size: 23px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    line-height: 1.3;
+}
+
+.question-intro p {
+    margin: 0 0 22px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.65;
+}
+
+.input-label {
+    display: block;
+    margin-bottom: 9px;
+    color: var(--navy);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+#question {
+    display: block;
+    width: 100%;
+    min-height: 120px;
+    padding: 15px 16px;
+    resize: vertical;
+
+    background: var(--surface-soft);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    outline: none;
+
+    color: var(--navy);
+    font-family: var(--font-main);
+    font-size: 14px;
+    line-height: 1.7;
+
+    transition:
+        border-color 0.2s ease,
+        box-shadow 0.2s ease;
+}
+
+#question::placeholder {
+    color: #98a4b1;
+}
+
+#question:focus {
+    border-color: var(--accent);
+    box-shadow:
+        0 0 0 3px rgba(20, 125, 131, 0.12);
+}
+
+.question-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 14px;
+}
+
+#askButton {
+    padding: 12px 22px;
+    background: var(--navy);
+    color: #ffffff;
+    border: 1px solid var(--navy);
+    border-radius: 9px;
+
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#askButton:hover:not(:disabled) {
+    background: #304e6d;
+    border-color: #304e6d;
+    transform: translateY(-1px);
+}
+
+#askButton:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+/* 8. Suggested research questions */
+
+.suggestions {
+    margin-top: 30px;
+    padding-top: 21px;
+    border-top: 1px solid var(--border);
+}
+
+.suggestions h3 {
+    margin: 0 0 7px;
+    color: var(--navy);
+    font-family: var(--font-heading);
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+}
+
+.suggestions-description {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.suggestion-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.suggestion-button {
+    display: block;
+    width: 100%;
+    padding: 13px 15px;
+
+    background: var(--surface-soft);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+
+    color: var(--text);
+    font-family: var(--font-main);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.55;
+    text-align: left;
+    cursor: pointer;
+}
+
+.suggestion-button:hover {
+    background: var(--accent-light);
+    border-color: #9acac9;
+    color: var(--accent-dark);
+}
+
+/* 9. Answer panel */
+
+.answer-card {
+    max-height: calc(100vh - 175px);
+    min-height: 0;
+    overflow-y: auto;
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: #c8d3db transparent;
+}
+
+.answer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.answer-header h2 {
+    margin: 0;
+    color: var(--navy);
+    font-family: var(--font-heading);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+}
+
+#copyButton {
+    flex-shrink: 0;
+    padding: 8px 13px;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+#copyButton:hover {
+    background: var(--surface-soft);
+    border-color: var(--accent);
+    color: var(--accent-dark);
+}
+
+/* 10. Research findings text */
+
+#answer {
+    color: var(--text);
+    font-family: var(--font-main);
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.85;
+    letter-spacing: 0.02px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* 11. Clickable citations */
+
+.citation-link {
+    display: inline;
+    padding: 2px 5px;
+    margin: 0 1px;
+
+    color: var(--accent-dark);
+    background: var(--accent-light);
+    border-radius: 5px;
+
+    font-family: var(--font-main);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.4;
+    text-decoration: none;
+    vertical-align: baseline;
+    white-space: nowrap;
+    cursor: pointer;
+
+    transition:
+        color 0.2s ease,
+        background-color 0.2s ease,
+        box-shadow 0.2s ease;
+}
+
+.citation-link:hover {
+    color: #ffffff;
+    background: var(--accent);
+    text-decoration: none;
+    box-shadow:
+        0 2px 7px rgba(20, 125, 131, 0.20);
+}
+
+.citation-link:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+}
+
+/* 12. Evidence navigation buttons */
+
+.evidence-actions {
+    margin-top: 25px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+}
+
+#viewEvidenceButton,
+#backToAnswerButton {
+    padding: 10px 15px;
+
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+
+    color: var(--navy);
+    font-family: var(--font-main);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#viewEvidenceButton:hover,
+#backToAnswerButton:hover {
+    background: var(--accent-light);
+    border-color: #9acac9;
+    color: var(--accent-dark);
+}
+
+/* 13. Supporting evidence cards */
+
+#sourceCards {
+    display: grid;
+    gap: 11px;
+}
+
+.source-card {
+    background: var(--surface-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 15px 16px;
+
+    scroll-margin-top: 20px;
+
+    transition:
+        background-color 0.25s ease,
+        border-color 0.25s ease,
+        box-shadow 0.25s ease;
+}
+
+.source-card:hover {
+    border-color: #c1d7d8;
+}
+
+.source-card[open] {
+    background: #ffffff;
+    border-color: #c9dce0;
+}
+
+.source-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+}
+
+.source-info {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+}
+
+.source-number {
+    color: var(--accent);
+    font-family: var(--font-main);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+}
+
+.source-title {
+    color: var(--navy);
+    font-family: var(--font-heading);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.source-page {
+    flex-shrink: 0;
+    padding: 5px 9px;
+
+    background: #eef2f5;
+    border-radius: 6px;
+
+    color: #627589;
+    font-family: var(--font-main);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.source-preview {
+    margin: 12px 0 0;
+    color: var(--muted);
+    font-family: var(--font-main);
+    font-size: 12px;
+    line-height: 1.7;
+}
+
+.source-full-text {
+    display: none;
+    margin: 14px 0 0;
+    padding-top: 15px;
+
+    border-top: 1px solid var(--border);
+
+    color: var(--text);
+    font-family: var(--font-main);
+    font-size: 13px;
+    line-height: 1.85;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.source-card[open] .source-preview {
+    display: none;
+}
+
+.source-card[open] .source-full-text {
+    display: block;
+}
+
+/* 14. Highlight the selected citation source */
+
+.source-card.source-highlight,
+.source-card.source-highlight[open] {
+    background: #edf9f7;
+    border-color: var(--accent);
+    box-shadow:
+        0 0 0 2px rgba(20, 125, 131, 0.16),
+        0 6px 18px rgba(20, 125, 131, 0.08);
+}
+
+.no-evidence {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.7;
+}
+
+/* 15. Raw references */
+
+.references {
+    margin-top: 25px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+}
+
+.references summary {
+    color: var(--accent-dark);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#context {
+    margin-top: 18px;
+    padding: 16px;
+
+    background: #f2f6f8;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+
+    color: #536679;
+    font-family: var(--font-main);
+    font-size: 12px;
+    line-height: 1.8;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* 16. Footer */
+
+footer {
+    margin-top: auto;
+    padding-top: 24px;
+
+    color: #94a0ad;
+    font-family: var(--font-main);
+    font-size: 11px;
+    text-align: center;
+}
+
+/* 17. Compact desktop layout */
+
+@media (min-width: 851px) {
+    .workspace {
+        padding-top: 16px;
+        padding-bottom: 12px;
+    }
+
+    .site-header {
+        padding-bottom: 15px;
+    }
+
+    .brand-icon {
+        font-size: 30px;
+    }
+
+    .brand h1 {
+        font-size: 24px;
+    }
+
+    .research-layout {
+        padding-top: 17px;
+        gap: 20px;
+    }
+
+    .question-card,
+    .answer-card {
+        padding: 23px;
+    }
+
+    .question-intro h2 {
+        font-size: 22px;
+        margin-bottom: 7px;
+    }
+
+    .question-intro p {
+        margin-bottom: 17px;
+        font-size: 13px;
+    }
+
+    #question {
+        min-height: 100px;
+        height: 100px;
+        padding: 12px 14px;
+    }
+
+    .question-actions {
+        margin-top: 11px;
+    }
+
+    #askButton {
+        padding: 11px 20px;
+    }
+
+    .suggestions {
+        margin-top: 22px;
+        padding-top: 17px;
+    }
+
+    .suggestions h3 {
+        font-size: 18px;
+        margin-bottom: 5px;
+    }
+
+    .suggestions-description {
+        font-size: 12px;
+    }
+
+    .suggestion-list {
+        grid-template-columns:
+            repeat(2, minmax(0, 1fr));
+        gap: 9px;
+        margin-top: 13px;
+    }
+
+    .suggestion-button {
+        padding: 11px 13px;
+        font-size: 12px;
+    }
+
+    footer {
+        padding-top: 12px;
+    }
+}
+
+/* 18. Tablet and mobile */
+
+@media (max-width: 850px) {
+    .workspace {
+        padding: 20px 16px;
+    }
+
+    .research-layout {
+        grid-template-columns: 1fr;
+        gap: 16px;
+        padding-top: 18px;
+    }
+
+    .question-card,
+    .answer-card {
+        padding: 20px;
+    }
+
+    .answer-card {
+        max-height: 65vh;
+    }
+
+    .header-label {
+        display: none;
+    }
+
+    .question-intro h2,
+    .answer-header h2 {
+        font-size: 21px;
+    }
+
+    .suggestion-list {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* 19. Small phones */
+
+@media (max-width: 480px) {
+    .workspace {
+        padding: 14px 12px;
+    }
+
+    .brand {
+        gap: 10px;
+    }
+
+    .brand-icon {
+        font-size: 27px;
+    }
+
+    .brand h1 {
+        font-size: 20px;
+    }
+
+    .brand p {
+        font-size: 9px;
+        letter-spacing: 1.3px;
+    }
+
+    .question-card,
+    .answer-card {
+        padding: 17px;
+        border-radius: 13px;
+    }
+
+    .answer-header {
+        align-items: flex-start;
+    }
+
+    #answer {
+        font-size: 13px;
+    }
+
+    .source-heading {
+        align-items: flex-start;
+    }
+}
+
+/* 20. Reduced motion accessibility */
+
+@media (prefers-reduced-motion: reduce) {
+    html,
+    .answer-card {
+        scroll-behavior: auto;
+    }
+
+    button,
+    .citation-link,
+    .source-card {
+        transition: none;
+    }
+}
+
+/* Font-only override: all UI text uses Inter consistently. */
+html, body, button, input, textarea, select, summary,
+.brand h1, .brand p, .header-label,
+.question-intro h2, .question-intro p, .input-label,
+.suggestions h3, .suggestions-description, .suggestion-button,
+.answer-header h2, #answer, #question, #copyButton,
+#askButton, #viewEvidenceButton, #backToAnswerButton,
+.source-number, .source-title, .source-page,
+.source-preview, .source-full-text, #context, footer {
+    font-family: "Inter", Arial, sans-serif;
+}

@@ -38,7 +38,11 @@ AUTHOR = re.compile(r"\b([A-Z][a-z]{2,})(?:\s+and\s+[A-Z][a-z]+)?\s+et\s+al\b") 
 
 RULES = """Rules:
 - Answer directly and briefly. Copy exact numbers, names and units as written in the context.
-- Cite the source after each claim like [file p.page].
+- After each factual claim, copy the exact citation label from the Context, including its filename and page number.
+- Example: if Context contains [04_BERT.pdf p.3], cite [04_BERT.pdf p.3] exactly.
+- Never write [file p.page], [file p.3], [19 p.1], or invent a citation.
+- Only cite filename-page combinations that appear as source labels in the Context.
+- If the required information is absent, say: I could not find this in the documents.
 - Use ONLY the context. No outside knowledge.
 - If the context does not state what the question asks (for example the question names a different year,
   dataset, model or quantity than the one in the context), reply exactly: """ + NOT_FOUND

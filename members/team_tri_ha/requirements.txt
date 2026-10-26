@@ -14,3 +14,5 @@ langchain-experimental
 google-api-python-client
 google-auth
 fonttools
+fastapi
+uvicorn[standard]
