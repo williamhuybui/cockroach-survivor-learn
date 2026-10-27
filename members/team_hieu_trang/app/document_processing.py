@@ -110,30 +110,6 @@ def normalize_headings(text: str) -> str:
     )
 
 
-# def styled_heading_lines(page) -> set[str]:
-#     """Find bold or larger PDF lines so table numbers do not become headings."""
-
-#     lines = [
-#         line
-#         for block in page.get_text("dict")["blocks"]
-#         for line in block.get("lines", [])
-#     ]
-#     sizes = Counter()
-#     for line in lines:
-#         for span in line["spans"]:
-#             sizes[round(span["size"], 1)] += len(span["text"])
-#     body_size = sizes.most_common(1)[0][0] if sizes else 0
-#     # PyMuPDF uses bit 16 for bold. Weighting font sizes by text length finds
-#     # the body style rather than a large title that occurs only once.
-#     return {
-#         clean_text("".join(span["text"] for span in line["spans"])).strip()
-#         for line in lines
-#         if any(
-#             span["flags"] & 16 or span["size"] > body_size + 0.5
-#             for span in line["spans"]
-#         )
-#     }
-
 def styled_heading_lines(page) -> set[str]:
     """Find lines where most text is bold or larger than body text."""
 
@@ -228,7 +204,6 @@ def paper_sections(
             locations.append(page.location)
     save_section()
     return sections
-
 
 def extract_sections(path: Path) -> tuple[str, list[ExtractedSection]]:
     """Extract PDF text by section, falling back to pages when needed."""

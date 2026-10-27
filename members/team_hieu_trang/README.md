@@ -50,18 +50,31 @@ code-reading order and troubleshooting.
 4. EmbeddingGemma embeds batches of 16 child chunks. Chroma stores child vectors
    for search and complete parent sections for answer context, plus Drive links,
    page locations and document fingerprints.
-5. Ordinary questions use one task. Complex requests produce a reviewable plan
-   without a fixed three-task cap. The browser shows Approve and Revise. Only the
-   exact saved plan executes; unresolved references lead to clarification.
+5. Simple questions skip the planner model call and run as one task. Questions
+   that list several items ("A, B and C", "each", "both") or name a paper go to
+   the planner, which writes self-contained sub-questions. A task that names
+   exactly one indexed paper is searched in that paper only. The browser shows
+   Approve and Revise for multi-task plans; unattended callers (the evaluation
+   gateway) never get a clarification and run every task.
 6. Every task uses the same hybrid search: EmbeddingGemma vectors, Chroma cosine
    search and Python BM25. Exact-paper filtering happens before dense top-k.
    A local MiniLM cross-encoder reranks candidates before parent expansion.
-7. Task results share one 14,000-character content budget. Shared passages retain
-   task associations and receive citation labels once. Conditional edges skip
-   retrieval for clarification and skip generation if evidence is empty.
-8. Separate graph nodes generate structured claims, verify quotes, sources,
-   numbers and task associations, then format an answer, partial answer or
-   abstention. Missing tasks are identified explicitly.
+   A task with no passage above the threshold keeps its two best passages when
+   sibling tasks found evidence.
+7. Up to eight 1,200-character windows per task share one 10,000-character
+   budget (about 2.5k prompt tokens; CPU prefill costs about 16 s per 1k tokens).
+   Shared passages keep task associations and receive citation labels once.
+8. One Gemma call writes at most four claims with short exact quotes. The
+   verifier then checks each claim without another model call: the quote must
+   exist (case and PDF hyphenation ignored) and relate to the claim, numbers must
+   appear in the quote, a year/version/size named by the task (2019, 8x7B) must
+   appear in the cited passage, and a difference ("by more than 2.0") must not be
+   stated as a value. A claim citing the wrong sentence is repaired from a
+   supporting sentence of the same paper. When an abstract and a body passage give
+   different numbers for the same result, the abstract value is kept.
+9. Answers contain only verified claims. If none survive, the answer is
+   "I don't know - this is not in the documents." Unverified tasks are listed
+   in `missing_tasks`, not in the answer text.
 
 The reranker threshold defaults to raw score `0`, a starting setting that needs
 evaluation on your papers. Scores are not probabilities. This version uses dense
@@ -283,6 +296,57 @@ For example, a chunk containing unrelated paragraphs could still receive full po
 
 Use the score alongside manual section/chunk inspection and separate retrieval evaluation. The weights and thresholds are initial heuristics and may be refined after testing multiple research papers.
 
+## Measure accuracy and latency
+
+`scripts/benchmark.py` runs questions through the same call as `api_view.team1_agent`
+and records answers, per-stage timings, LLM calls and tokens, and memory.
+`scripts/judge.py` grades the run with the official grader's `judge()`
+(gpt-4o-mini, +1 correct, +0.5 partial, 0 idk, -0.5 hallucinated; unanswerable
+questions score +1 only for an explicit abstention). It needs `OPENAI_API_KEY`
+in the environment or this folder's `.env`. Results go to `data/evaluations/`,
+which is not committed.
+
+Pick the level that matches what changed:
+
+| Level | Questions | Time | Use for |
+|---|---|---|---|
+| Unit tests | `tests/test_agent.py`, `test_grounding.py`, `test_question_planning.py`, `test_hybrid.py` | < 1 min | Verifier, formatting and planner logic |
+| Smoke | `smoke_set.csv` (D01, D04, D05, D09, D13: numbers, multipart, two papers, unanswerable, five papers) | ~10 min | Planning, retrieval or prompt changes |
+| Full | `../../dev_set.csv` (15) and `unseen_set.csv` (10, papers outside the dev set) | ~50 min | Before accepting changes or a test-set run |
+
+```powershell
+.\.venv-research\Scripts\python.exe -m pytest -q tests/test_agent.py tests/test_grounding.py tests/test_question_planning.py tests/test_hybrid.py
+.\.venv-research\Scripts\python.exe scripts\benchmark.py smoke_set.csv --output data\evaluations\smoke.json
+.\.venv-research\Scripts\python.exe scripts\judge.py data\evaluations\smoke.json --dataset smoke_set.csv
+# Full check
+.\.venv-research\Scripts\python.exe scripts\benchmark.py ..\..\dev_set.csv --output data\evaluations\dev.json
+.\.venv-research\Scripts\python.exe scripts\judge.py data\evaluations\dev.json
+.\.venv-research\Scripts\python.exe scripts\benchmark.py unseen_set.csv --output data\evaluations\unseen.json
+.\.venv-research\Scripts\python.exe scripts\judge.py data\evaluations\unseen.json --dataset unseen_set.csv
+```
+
+On macOS use `.venv-research/bin/python` and forward slashes. Run one benchmark
+at a time: Ollama serves one request at a time (`OLLAMA_NUM_PARALLEL` defaults
+to 1), so parallel runs slow each other and push answers past the grader's 120 s
+timeout. `benchmark.py` has no HTTP timeout; check `seconds` against 120 yourself.
+Never run these scripts on the hidden test set or read its per-question results;
+use only the score the dashboard reports.
+
+### Try the agent through the evaluation gateway
+
+1. Make sure Ollama is running (`curl localhost:11434/api/version`) and no other benchmark is.
+2. From the repo root, start the gateway and leave the terminal open:
+   `members/team_hieu_trang/.venv-research/bin/python -m uvicorn api_view:app --port 8000`
+3. Open http://127.0.0.1:8000/docs.
+4. `GET /{team}/health` with team `team1` -> *Try it out* -> *Execute* returns `{"ok": true}`.
+5. `POST /{team}/rag-agent` with team `team1` and body `{"question": "..."}` returns `answer` and
+   `sources`. Expect 1.5-3 minutes per question; the first one also loads the models.
+6. `POST /{team}/evaluate` scores a set: team `team1`, `set=dev`, `limit=5`, `workers=3`. Check
+   that `errors` is 0. With `set=test` and no `limit`, the run is an official practice run: it updates
+   the leaderboard and is allowed once every 7 days. A run with `limit` is not.
+7. Do not ask questions elsewhere (chat UI, another tab) while a run is going; Ollama serves one
+   request at a time. Stop the gateway with Ctrl+C.
+
 ## Limits
 
 PDF extraction is text-based. Scans need OCR; figures, equations, tables and
@@ -317,9 +381,8 @@ SQLite pending_plans preserves proposals across refresh. Deleting a chat removes
 its plan; failed execution unlocks a proposal for retry. Initialization adds the
 table without changing existing messages.
 
-There is no fixed task-count cap on a plan. Execution batches currently handle
-up to five searches, derived from the existing 14000-character budget and
-2400-character full windows. Larger plans display and save the remaining tasks
-for another approval. Ordinary questions remain immediate. Bounded recent user
+There is no fixed task-count cap on a plan. Reviewed execution batches handle
+up to five searches; larger plans display and save the remaining tasks for
+another approval. Unattended runs execute every task in one batch. Ordinary questions remain immediate. Bounded recent user
 and assistant messages support follow-up planning, not unrestricted dependent
 reasoning. Offline evaluation bypasses review and labels traces automatic_offline.

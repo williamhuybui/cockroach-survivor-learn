@@ -9,17 +9,23 @@ from langchain_ollama import ChatOllama, OllamaEmbeddings
 from .config import CHAT_MODEL, EMBED_DIM, EMBED_MODEL, OLLAMA_BASE_URL
 
 
-@lru_cache(maxsize=1)
-def chat_model():
-    """Reuse Gemma with a bounded context and output to reduce local response time."""
+DEFAULT_OUTPUT_TOKENS = 3200
+# A grounded answer is at most a few short claims; decoding runs at ~8 tokens/s on CPU.
+ANSWER_OUTPUT_TOKENS = 1024
+
+
+@lru_cache(maxsize=4)
+def chat_model(num_predict: int = DEFAULT_OUTPUT_TOKENS):
+    """Reuse Gemma with a bounded context; CPU decoding makes each output token costly."""
     return ChatOllama(
         model=CHAT_MODEL,
         base_url=OLLAMA_BASE_URL,
         temperature=0,
         num_ctx=8192,
-        num_predict=3200,
+        num_predict=num_predict,
         keep_alive="15m",
-        client_kwargs={"timeout": 180},
+        # Ollama serves one request at a time by default; concurrent callers wait in its queue.
+        client_kwargs={"timeout": 600},
     )
 
 
@@ -52,7 +58,7 @@ def embed_query(query: str) -> list[float]:
     return vector
 
 
-def generate(schema, instruction, evidence, request=None):
+def generate(schema, instruction, evidence, request=None, max_tokens=ANSWER_OUTPUT_TOKENS):
     """Generate evidence-only answers or quizzes with shared instruction boundaries."""
     return structured_request(
         schema,
@@ -72,25 +78,31 @@ def generate(schema, instruction, evidence, request=None):
                 for row in evidence
             ],
         },
+        max_tokens,
     )
 
 
-def structured_request(schema, instruction: str, payload: dict):
+def structured_request(
+    schema, instruction: str, payload: dict, max_tokens: int = DEFAULT_OUTPUT_TOKENS
+):
     """Call a structured model with task-specific instructions and untrusted JSON input."""
-    model = chat_model().with_structured_output(schema, method="json_schema")
+    model = chat_model(max_tokens).with_structured_output(
+        schema, method="json_schema", include_raw=True
+    )
     messages = [
-        (
-            "system",
-            instruction,
-        ),
-        (
-            "human",
-            json.dumps(payload, ensure_ascii=False),
-        ),
+        ("system", instruction),
+        ("human", json.dumps(payload, ensure_ascii=False)),
     ]
     for attempt in range(2):
         try:
-            return model.invoke(messages)
+            response = model.invoke(messages)
+            if response.get("parsing_error") is not None:
+                raise ValueError(
+                    f"Structured output parsing failed: {response['parsing_error']}"
+                )
+            if response.get("parsed") is None:
+                raise ValueError("Structured output returned no parsed result")
+            return response["parsed"]
         except Exception:  # Ollama can transiently reject a structured-output plan.
             if attempt:
                 raise

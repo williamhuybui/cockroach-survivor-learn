@@ -6,18 +6,31 @@ from collections import Counter
 from functools import lru_cache
 from time import perf_counter
 
+from threading import Lock
+
+from . import paper_store
 from .config import MIN_RERANK_SCORE, RERANK_MODEL
 from .llm import embed_query
 from .paper_store import collection, parent_collection
 
+_rerank_lock = Lock()
+
 CANDIDATE_COUNT = 24
-EVIDENCE_COUNT = 5
-CONTEXT_CHARACTERS = 14000
+EVIDENCE_COUNT = 8
+# ~2.5k prompt tokens: CPU prefill costs ~16 s per 1k tokens, so windows stay short.
+CONTEXT_CHARACTERS = 10000
+WINDOW_CHARACTERS = 1200
 
 
 def tokens(text: str) -> list[str]:
     """Keep words and numbers for literal technical-term matching."""
     return re.findall(r"[a-z0-9]+", text.casefold())
+
+
+@lru_cache(maxsize=None)
+def word_counts(text: str) -> Counter:
+    """Tokenize each chunk once per process; callers must not mutate the result."""
+    return Counter(tokens(text))
 
 
 def keyword_candidates(
@@ -26,7 +39,7 @@ def keyword_candidates(
     """Rank text with BM25 (k1=1.5, b=0.75), independently of vector scores."""
     if not records:
         return []
-    bags = [Counter(tokens(row["content"])) for row in records]
+    bags = [word_counts(row["content"]) for row in records]
     lengths = [sum(bag.values()) for bag in bags]
     average = sum(lengths) / len(lengths) or 1
     terms = set(tokens(query))
@@ -51,15 +64,29 @@ def keyword_candidates(
     return sorted(scored, key=lambda row: row["bm25_score"], reverse=True)[:limit]
 
 
+def index_version() -> int:
+    """Chroma rewrites its SQLite file on ingestion, so its mtime invalidates caches."""
+    database = paper_store.CHROMA_PATH / "chroma.sqlite3"
+    return database.stat().st_mtime_ns if database.exists() else 0
+
+
+@lru_cache(maxsize=1)
+def all_records(version: int) -> tuple[dict, ...]:
+    """Read every chunk once per index version instead of once per search task."""
+    saved = collection().get(include=["documents", "metadatas"])
+    return tuple(
+        {"id": key, "content": text, **meta}
+        for key, text, meta in zip(saved["ids"], saved["documents"], saved["metadatas"])
+    )
+
+
 def matching_records(paper: str | None = None) -> list[dict]:
     """Read chunks, optionally restricted to an exact paper chosen by the workflow."""
-    saved = collection().get(include=["documents", "metadatas"])
-    records = []
-    for key, text, meta in zip(saved["ids"], saved["documents"], saved["metadatas"]):
-        if paper is not None and meta.get("title") != paper:
-            continue
-        records.append({"id": key, "content": text, **meta})
-    return records
+    return [
+        row
+        for row in all_records(index_version())
+        if paper is None or row.get("title") == paper
+    ]
 
 
 def hybrid_candidates(query: str, paper: str | None = None) -> list[dict]:
@@ -82,7 +109,7 @@ def expand_parents(ranked: list[dict], limit: int) -> list[dict]:
         parent_id = row.get("parent_id", row["id"])
         if parent_id in seen:
             continue
-        budget = min(2400, remaining)
+        budget = min(WINDOW_CHARACTERS, remaining)
         if budget < 400:
             break
         content = row["content"]
@@ -97,7 +124,7 @@ def expand_parents(ranked: list[dict], limit: int) -> list[dict]:
             body = content.split("\n", 2)[-1]
             position = text.find(body)
             if position >= 0:
-                start = max(0, position - 350)
+                start = max(0, position - 200)
                 content = text[start : start + budget]
         result.append(
             {**row, "content": content[:budget], "child_content": row["content"]}
@@ -154,16 +181,21 @@ def retrieve_candidates(
     return candidates
 
 
-def rerank_candidates(query: str, candidates: list[dict]) -> list[dict]:
+def rerank_candidates(
+    query: str, candidates: list[dict], min_score: float = MIN_RERANK_SCORE
+) -> list[dict]:
     """Score question/passage pairs and discard weak matches before generation."""
 
     if not candidates:
         return []
-    scores = reranker().predict([(query, row["content"]) for row in candidates])
+    pairs = [(query, row["content"]) for row in candidates]
+
+    with _rerank_lock:
+        scores = reranker().predict(pairs)
     ranked = [
         {**row, "rerank_score": float(score)}
         for row, score in zip(candidates, scores)
-        if float(score) >= MIN_RERANK_SCORE
+        if float(score) >= min_score
     ]
     return sorted(ranked, key=lambda row: row["rerank_score"], reverse=True)
 
@@ -173,13 +205,22 @@ def search(
     limit: int = EVIDENCE_COUNT,
     paper: str | None = None,
     diagnostics: dict | None = None,
+    fallback: int = 0,
 ) -> list[dict]:
-    """Retrieve and rerank passages with their exact Drive link and PDF location."""
+    """Retrieve and rerank passages with their exact Drive link and PDF location.
+
+    fallback keeps that many best passages even when all score below the threshold.
+    """
 
     started = perf_counter()
     candidates = hybrid_candidates(query, paper)
     retrieved_at = perf_counter()
-    ranked = rerank_candidates(query, candidates)
+    if fallback:
+        ranked = rerank_candidates(query, candidates, -math.inf)
+        strong = [row for row in ranked if row["rerank_score"] >= MIN_RERANK_SCORE]
+        ranked = strong or ranked[:fallback]
+    else:
+        ranked = rerank_candidates(query, candidates)
     ranked_at = perf_counter()
     evidence = expand_parents(ranked, limit)
     if diagnostics is not None:

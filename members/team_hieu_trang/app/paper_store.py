@@ -1,5 +1,7 @@
 """Local Chroma collections hold searchable children and their full parent sections."""
 
+from threading import Lock
+
 import chromadb
 
 from .config import (
@@ -13,6 +15,23 @@ from .config import (
 COLLECTION_NAME = "research_papers"
 INDEX_VERSION = "paper-parents-v4"
 
+_clients: dict[str, chromadb.ClientAPI] = {}
+_client_lock = Lock()
+
+
+def client():
+    """Share one Chroma client per index path across threads.
+
+    Creating PersistentClient concurrently in a fresh process corrupts Chroma's
+    shared system cache ("Could not connect to tenant default_tenant"), so
+    creation happens once, behind a lock.
+    """
+    path = str(CHROMA_PATH)
+    with _client_lock:
+        if path not in _clients:
+            _clients[path] = chromadb.PersistentClient(path=path)
+        return _clients[path]
+
 
 def parent_collection():
     """Store full sections in the same Chroma directory for child-to-parent lookup.
@@ -20,8 +39,7 @@ def parent_collection():
     Parent vectors are child centroids, not another model call. Retrieval uses
     child vectors and parent IDs; the parent collection is fetched by ID only.
     """
-    client = chromadb.PersistentClient(path=str(CHROMA_PATH))
-    return client.get_or_create_collection(
+    return client().get_or_create_collection(
         name="research_sections", embedding_function=None
     )
 
@@ -40,8 +58,7 @@ def collection():
     """
 
     CHROMA_PATH.mkdir(parents=True, exist_ok=True)
-    client = chromadb.PersistentClient(path=str(CHROMA_PATH))
-    store = client.get_or_create_collection(
+    store = client().get_or_create_collection(
         name=COLLECTION_NAME,
         embedding_function=None,
         metadata={"hnsw:space": "cosine", "signature": embedding_signature()},
@@ -57,13 +74,13 @@ def reset_collection() -> None:
     """Remove this app's old Chroma collection before an explicit full rebuild."""
 
     CHROMA_PATH.mkdir(parents=True, exist_ok=True)
-    client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+    chroma = client()
     try:
-        client.delete_collection(COLLECTION_NAME)
+        chroma.delete_collection(COLLECTION_NAME)
     except chromadb.errors.NotFoundError:
         pass
     try:
-        client.delete_collection("research_sections")
+        chroma.delete_collection("research_sections")
     except chromadb.errors.NotFoundError:
         pass
 

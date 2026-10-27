@@ -3,11 +3,13 @@
 import json
 from time import perf_counter
 from typing import TypedDict
+from typing import NotRequired
 
 from langgraph.graph import END, START, StateGraph
 
 from .db import new_id, open_database
 from .grounding import (
+    NOT_IN_DOCUMENTS,
     DraftAnswer,
     abstention,
     draft_answer,
@@ -15,9 +17,9 @@ from .grounding import (
     source_cards,
     verify_claims,
 )
-from .llm import generate
+from .llm import DEFAULT_OUTPUT_TOKENS, generate
 from .paper_store import source_rows
-from .question_planning import QuestionPlan, plan_question
+from .question_planning import QuestionPlan, SearchTask, plan_question
 from .quiz_validation import (
     QuizContent,
     QuizRequest,
@@ -52,6 +54,7 @@ def quiz_payload(request: QuizRequest, evidence: list[dict]) -> dict:
         "an explanation, and source_ids for each question. Do not invent facts.",
         evidence,
         {"topic": request.topic},
+        DEFAULT_OUTPUT_TOKENS,  # Up to ten questions with explanations need a longer output.
     )
     if len(quiz.questions) != request.count:
         raise ValueError("Wrong question count returned; try fewer questions")
@@ -83,7 +86,9 @@ def make_quiz(request: QuizRequest) -> dict:
     return {"kind": "quiz", "quiz_id": quiz_id, **public_quiz(payload)}
 
 
-WORKFLOW_VERSION = "reviewed-plan-v2"
+WORKFLOW_VERSION = "reviewed-plan-v3"
+# Each task still receives at least two short evidence windows within the shared budget.
+MAX_TASKS_PER_BATCH = 5
 
 
 class ChatState(TypedDict, total=False):
@@ -105,6 +110,8 @@ class ChatState(TypedDict, total=False):
     awaiting_approval: bool
     deferred_tasks: list[dict]
     force_review: bool
+    allow_clarification: bool
+    consistency_report: NotRequired[dict]
 
 
 def plan(state: ChatState) -> dict:
@@ -117,6 +124,9 @@ def plan(state: ChatState) -> dict:
         if approved
         else plan_question(state["message"], state.get("history", []), papers)
     )
+    if planned.clarification and not state.get("allow_clarification", True):
+        # Unattended callers (API, evaluation) cannot answer a question back; search everything.
+        planned = QuestionPlan(tasks=[SearchTask(question=state["message"])])
     if approved and any(
         task.paper and task.paper not in {row["title"] for row in papers}
         for task in planned.tasks
@@ -125,6 +135,7 @@ def plan(state: ChatState) -> dict:
             clarification="The indexed papers changed. Please revise the plan before approving it again."
         )
     tasks = [task.model_dump() for task in planned.tasks]
+
     review = (
         state.get("require_review", False)
         and not approved
@@ -135,7 +146,8 @@ def plan(state: ChatState) -> dict:
         )
     )
     # One response has a finite evidence window; keep larger plans for subsequent batches.
-    batch_size = max(1, CONTEXT_CHARACTERS // 2400)
+    # Batches exist so a reviewer can approve the next one; unattended runs do every task.
+    batch_size = MAX_TASKS_PER_BATCH if state.get("require_review") else max(len(tasks), 1)
     deferred = tasks[batch_size:] if not review else []
     if not review:
         tasks = tasks[:batch_size]
@@ -176,6 +188,16 @@ def retrieve(state: ChatState) -> dict:
         trace: dict = {"capture_evidence": state.get("capture_evidence", False)}
         groups.append(search(task["question"], paper=task["paper"], diagnostics=trace))
         runs.append({"task": task, "trace": trace})
+    # A sub-question phrased unlike the paper can score below the threshold even when
+    # its siblings found evidence; keep its two best passages instead of dropping it.
+    if any(groups):
+        for task_id, group in enumerate(groups):
+            if not group:
+                task = tasks[task_id]
+                groups[task_id] = search(
+                    task["question"], paper=task["paper"],
+                    diagnostics=runs[task_id]["trace"], fallback=2,
+                )
     # Round-robin selection gives each task a chance before spending the budget.
     remaining, evidence = CONTEXT_CHARACTERS, {}
     task_budget = CONTEXT_CHARACTERS // len(tasks)
@@ -228,17 +250,22 @@ def generate_answer(state: ChatState) -> dict:
         {"role": item["role"], "content": item["content"][:500]}
         for item in state.get("history", [])[-2:]
     ]
-    draft = draft_answer(state["message"], history, state["evidence"], state["tasks"])
+    draft, consistency_report = draft_answer(
+        state["message"], history, state["evidence"], state["tasks"]
+    )
     return {
         "draft": draft,
         "timings": {**state["timings"], "generation": perf_counter() - started},
+        "consistency_report": consistency_report,
     }
 
 
 def verify(state: ChatState) -> dict:
     """Check source support and declared coverage without another model call."""
     started = perf_counter()
-    checked = verify_claims(state["draft"], state["evidence"], state["tasks"])
+    checked = verify_claims(
+        state["draft"], state["evidence"], state["tasks"], question=state["message"]
+    )
     return {
         "verification": checked,
         "timings": {**state["timings"], "verification": perf_counter() - started},
@@ -272,12 +299,15 @@ def format_response(state: ChatState) -> dict:
             for i, task in enumerate(state["tasks"])
         )
     elif not state.get("evidence"):
-        result = abstention(
-            "No matching research-paper evidence was found for this question."
-        )
+        # Same wording as every other abstention so graders read it as "I don't know".
+        result = abstention(NOT_IN_DOCUMENTS)
     else:
         result = format_answer(
-            state["draft"], state["verification"], state["evidence"], state["tasks"]
+            state["draft"],
+            state["verification"],
+            state["evidence"],
+            state["tasks"],
+            consistency_report=state.get("consistency_report"),
         )
     if state.get("deferred_tasks"):
         if not state.get("evidence"):
@@ -332,6 +362,7 @@ def answer_with_context(
     require_review: bool = False,
     approved_plan: dict | None = None,
     force_review: bool = False,
+    allow_clarification: bool = True,
 ) -> dict:
     """Run the shared browser/evaluation workflow; reference answers never enter it."""
     started = perf_counter()
@@ -343,6 +374,7 @@ def answer_with_context(
             "require_review": require_review,
             "approved_plan": approved_plan,
             "force_review": force_review,
+            "allow_clarification": allow_clarification,
         }
     )
     return {

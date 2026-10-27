@@ -184,6 +184,7 @@ def team1_agent(question: str) -> dict:
         history=[],
         capture_evidence=False,
         require_review=False,
+        allow_clarification=False,
     )
 
     # Extract the answer
