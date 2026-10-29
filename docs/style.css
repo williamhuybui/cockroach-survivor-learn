@@ -68,10 +68,11 @@ footer { text-align:center; color:var(--muted); padding:30px 0 40px; }
 .onerule { font-size:1.2rem; margin:8px 0 0; }
 .onerule i { color:var(--accent); }
 
+#board tr.team-row { cursor:pointer; }
 #board .hist-toggle { font-size:.8rem; margin-left:6px; }
 #board td.score .pct { font-size:.95rem; font-weight:700; color:var(--text, #fff); margin-left:6px; }
 #board tr.history td { padding-top:0; border-top:0; }
-#board .hist-row { display:grid; grid-template-columns:90px 110px 110px 1fr; gap:8px; padding:4px 0; font-size:.9rem; }
+#board .hist-row { display:grid; grid-template-columns:90px 190px 110px 1fr; gap:8px; padding:4px 0; font-size:.9rem; }
 
 /* compact layout: everything fits on one screen */
 .hero { padding: 22px 0 8px; }
