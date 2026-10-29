@@ -1,4 +1,9 @@
-"""FastAPI routes for the research-paper chat and existing quiz interface."""
+"""Expose the browser chat, saved conversations and quiz routes through FastAPI.
+
+Validate incoming browser actions, load/save SQLite state and delegate research work
+to services.py. The browser submits questions or approves a saved plan; these routes
+do not download or rebuild the paper index.
+"""
 
 import json
 import logging
@@ -11,11 +16,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
-from .challenge import get_daily, submit_daily
-from .db import new_id, open_database
-from .paper_store import collection, source_rows
+from .challenge import get_or_create_daily_challenge, submit_daily_challenge
+from .db import create_record_id, open_database
+from .paper_store import list_indexed_papers, open_chunk_store
 from .quiz_validation import SubmitRequest, grade_quiz
-from .services import answer_with_context, respond
+from .services import answer_research_question, handle_chat_message
 
 STATIC = Path(__file__).parent / "static"
 logger = logging.getLogger(__name__)
@@ -24,15 +29,23 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
 @app.exception_handler(ValueError)
-def bad_value(request: Request, exc: ValueError):
-    """Return validation errors without turning them into server failures."""
+def handle_validation_error(request: Request, exc: ValueError):
+    """Return HTTP 422 for invalid requests or service input.
+
+    Give the browser a readable message so it can show a validation problem rather
+    than treating it as a server crash.
+    """
 
     return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
 @app.exception_handler(Exception)
-def service_failure(request: Request, exc: Exception):
-    """Keep secrets and paper text out of unexpected error responses."""
+def handle_service_error(request: Request, exc: Exception):
+    """Log unexpected failures and return a generic HTTP 503 response.
+
+    The server log retains diagnostic details while the browser receives no secrets
+    or paper text from exception messages.
+    """
 
     logger.exception("Request failed: %s", request.url.path)
     return JSONResponse(
@@ -44,22 +57,26 @@ def service_failure(request: Request, exc: Exception):
 
 
 @app.get("/")
-def index():
-    """Serve the plain HTML chat interface."""
+def serve_chat_page():
+    """Return the HTML entry page whose script calls the chat and quiz APIs."""
 
     return FileResponse(STATIC / "index.html")
 
 
 @app.get("/api/sources")
-def sources():
-    """Show the research PDFs currently indexed in Chroma."""
+def get_indexed_paper_sources():
+    """Return the current indexed-paper catalog for the browser's source display."""
 
-    return source_rows()
+    return list_indexed_papers()
 
 
 @app.get("/api/sessions/{session_id}")
-def get_session(session_id: str):
-    """Restore one saved browser conversation."""
+def get_chat_session(session_id: str):
+    """Load a saved conversation and its pending plan ID from SQLite.
+
+    The browser uses these to restore messages and enable only the approval controls
+    belonging to the current proposal.
+    """
 
     with open_database() as database:
         row = database.execute(
@@ -79,8 +96,11 @@ def get_session(session_id: str):
 
 
 @app.delete("/api/sessions/{session_id}", status_code=204)
-def delete_session(session_id: str):
-    """Delete a conversation from the recent-chat list."""
+def delete_chat_session(session_id: str):
+    """Delete one saved conversation and report a missing ID as HTTP 404.
+
+    SQLite removes its pending proposal through the foreign-key relationship.
+    """
 
     with open_database() as database:
         deleted = database.execute(
@@ -91,6 +111,8 @@ def delete_session(session_id: str):
     return Response(status_code=204)
 
 
+# The browser sends either new text or an approve/revise action for a saved plan.
+# Pydantic checks the shape here before the route loads history or calls the graph.
 class ChatRequest(BaseModel):
     """Validate a browser message and its optional conversation identifier."""
 
@@ -100,8 +122,12 @@ class ChatRequest(BaseModel):
     plan_id: str | None = None
 
     @model_validator(mode="after")
-    def valid_action(self):
-        """Require text for requests and exact saved-plan tokens for review actions."""
+    def validate_chat_action(self):
+        """Check that messages contain text and review actions identify a saved proposal.
+
+        Approval needs a session ID and plan ID; ordinary and revision messages also
+        need nonblank text.
+        """
         if self.action != "approve" and not self.message.strip():
             raise ValueError("A non-empty message is required")
         if self.action != "message" and (not self.plan_id or not self.session_id):
@@ -109,11 +135,45 @@ class ChatRequest(BaseModel):
         return self
 
 
-@app.post("/api/chat")
-def chat(body: ChatRequest):
-    """Save a stable chat ID before the slow model call, then append its answer."""
+class ResearchQuestion(BaseModel):
+    """Accept one independent Swagger question, without chat or approval state."""
 
-    session_id = body.session_id or new_id()
+    # Require at least one non-whitespace character so blank requests are rejected.
+    question: str = Field(min_length=1, max_length=2000, pattern=r"\S")
+
+
+@app.post(
+    "/team1/rag-agent",
+    summary="Answer an independent question automatically",
+    description="Runs planning, retrieval and answer verification without approval or conversation history. Returns a final answer, partial answer or abstention.",
+)
+def handle_independent_question(body: ResearchQuestion):
+    """Run the evaluation flow directly from Swagger and return answer plus sources.
+
+    Use no saved conversation and never create a pending plan. The same graph
+    keeps the planner and grounding checks, with review explicitly disabled.
+    """
+    result = answer_research_question(
+        body.question, history=[], capture_evidence=False, require_review=False
+    )
+    return {
+        "answer": result["answer"],
+        "sources": list(
+            dict.fromkeys(source["title"] for source in result.get("sources", []))
+        ),
+    }
+
+
+@app.post("/api/chat", summary="Browser chat with conversation history and plan review")
+def handle_chat_request(body: ChatRequest):
+    """Process a message, approval or revision and save the resulting conversation.
+
+    Load history and claim any pending plan before work so duplicate actions cannot
+    run it twice. Execute approved content or request a revision, release the plan
+    after failures, then save the assistant response and any next proposal.
+    """
+
+    session_id = body.session_id or create_record_id()
     with open_database() as database:
         database.execute(
             "INSERT OR IGNORE INTO chat_sessions (id) VALUES (?)", (session_id,)
@@ -121,7 +181,8 @@ def chat(body: ChatRequest):
         row = database.execute(
             "SELECT messages FROM chat_sessions WHERE id = ?", (session_id,)
         ).fetchone()
-        history = json.loads(row["messages"])
+        original_messages = row["messages"]
+        history = json.loads(original_messages)
         pending = database.execute(
             "SELECT * FROM pending_plans WHERE session_id = ?", (session_id,)
         ).fetchone()
@@ -145,7 +206,7 @@ def chat(body: ChatRequest):
     try:
         if body.action == "approve":
             saved_plan = json.loads(pending["payload"])
-            result = answer_with_context(
+            result = answer_research_question(
                 saved_plan["question"],
                 history,
                 capture_evidence=False,
@@ -163,9 +224,9 @@ def chat(body: ChatRequest):
                     + body.message
                 )
             result = (
-                respond(question, history, True)
+                handle_chat_message(question, history, True)
                 if pending
-                else respond(question, history)
+                else handle_chat_message(question, history)
             )
     except Exception:
         # Failed generation must not leave the saved proposal permanently locked.
@@ -188,9 +249,10 @@ def chat(body: ChatRequest):
     human_text = "Approve plan" if body.action == "approve" else body.message
     updated = history + [{"role": "human", "content": human_text}, assistant_message]
     with open_database() as database:
+        # Requests may run together, but a stale answer must not overwrite newer history.
         saved = database.execute(
-            "UPDATE chat_sessions SET messages = ? WHERE id = ?",
-            (json.dumps(updated), session_id),
+            "UPDATE chat_sessions SET messages = ? WHERE id = ? AND messages = ?",
+            (json.dumps(updated), session_id, original_messages),
         )
         if saved.rowcount:
             database.execute(
@@ -202,7 +264,10 @@ def chat(body: ChatRequest):
                     (session_id, result["plan"]["plan_id"], json.dumps(result["plan"])),
                 )
     if saved.rowcount == 0:
-        raise HTTPException(409, "This chat was deleted while the answer was generated")
+        raise HTTPException(
+            409,
+            "This chat changed or was deleted while the answer was generated. Reopen it and retry.",
+        )
     return {
         **result,
         "session_id": session_id,
@@ -211,8 +276,12 @@ def chat(body: ChatRequest):
 
 
 @app.get("/api/sessions")
-def sessions():
-    """Use the first user question as each recent chat's title."""
+def list_chat_sessions():
+    """Return recent conversation IDs and titles derived from their first message.
+
+    The sidebar uses this list to reopen chats without storing a second history in
+    the browser.
+    """
 
     with open_database() as database:
         rows = database.execute(
@@ -229,10 +298,13 @@ def sessions():
 
 
 @app.get("/api/status")
-def status():
-    """Show whether any papers are indexed and when ingestion last completed."""
+def get_index_status():
+    """Report whether Chroma contains chunks and when ingestion last completed.
 
-    ready = collection().count() > 0
+    This is an index-readiness indicator, not a live check of every model service.
+    """
+
+    ready = open_chunk_store().count() > 0
     with open_database() as database:
         row = database.execute(
             "SELECT value FROM settings WHERE key = ?", ("last_ingested_at",)
@@ -241,22 +313,30 @@ def status():
 
 
 @app.get("/api/daily-challenge")
-def daily():
-    """Return today's quiz question, creating it if needed."""
+def get_daily_challenge():
+    """Return the saved daily question or generate today's question on first access."""
 
-    return get_daily()
+    return get_or_create_daily_challenge()
 
 
 @app.post("/api/daily-challenge/{day}/submit")
-def daily_submit(day: date, body: SubmitRequest):
-    """Grade the displayed day even when midnight has passed."""
+def handle_daily_challenge_submission(day: date, body: SubmitRequest):
+    """Grade the question for the date the browser displayed.
 
-    return submit_daily(day, body.answers)
+    Using that date keeps a submission tied to its original daily challenge even if
+    midnight has passed.
+    """
+
+    return submit_daily_challenge(day, body.answers)
 
 
 @app.post("/api/quizzes/{quiz_id}/submit")
-def submit(quiz_id: str, body: SubmitRequest):
-    """Grade a saved quiz and reveal its answer explanations."""
+def handle_quiz_submission(quiz_id: str, body: SubmitRequest):
+    """Grade submitted option indexes against the saved quiz key and record the attempt.
+
+    Return the score, explanations and source links after submission; grading
+    requires no model call.
+    """
 
     with open_database() as database:
         row = database.execute(
@@ -269,7 +349,7 @@ def submit(quiz_id: str, body: SubmitRequest):
         score = grade_quiz(questions, body.answers)
         database.execute(
             "INSERT INTO quiz_attempts (id, quiz_id, answers, score) VALUES (?, ?, ?, ?)",
-            (new_id(), quiz_id, json.dumps(body.answers), score),
+            (create_record_id(), quiz_id, json.dumps(body.answers), score),
         )
     return {
         "score": score,

@@ -1,4 +1,9 @@
-"""SQLite stores chats, quizzes, settings and index-run summaries; passages live in Chroma."""
+"""Store application history and small bookkeeping records in local SQLite.
+
+Chat messages, pending plans, quizzes, attempts, settings and index-run summaries
+use schema.sql. Research passages and embedding vectors live in Chroma instead. Use
+open_database() so transactions and connections are cleaned up consistently.
+"""
 
 import sqlite3
 from contextlib import contextmanager
@@ -10,18 +15,22 @@ from .config import SQLITE_PATH
 SCHEMA_FILE = Path(__file__).with_name("schema.sql")
 
 
-def new_id() -> str:
-    """Give each chat, quiz, or attempt a stable identifier for the browser."""
+def create_record_id() -> str:
+    """Create a new unique ID (UUID) for a chat, proposal, quiz, attempt or index run.
+
+    Callers save this ID with the record so later requests can refer to the same
+    item.
+    """
 
     return str(uuid4())
 
 
 @contextmanager
 def open_database():
-    """Commit successful writes, roll back failures, and always close SQLite.
+    """Provide a SQLite connection for a with block and always close it afterward.
 
-    A plain ``with sqlite3.connect(...)`` handles the transaction but does not
-    close the connection. This small wrapper avoids repeating that cleanup.
+    Commit successful writes and roll back failures. Enable foreign keys and named-
+    column access so callers can safely share the same storage pattern.
     """
 
     SQLITE_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -36,7 +45,14 @@ def open_database():
 
 
 def initialize_database() -> None:
-    """Create the small local tables used by the existing chat and quiz UI."""
+    """Create any missing tables from schema.sql without clearing saved records.
+
+    Called during application/setup flows so chat, quiz and indexing bookkeeping
+    have the required tables.
+    """
 
     with open_database() as database:
+        # WAL lets readers continue while a short write transaction is active.
+        # SQLite still allows only one writer at a time; never hold it during inference.
+        database.execute("PRAGMA journal_mode = WAL")
         database.executescript(SCHEMA_FILE.read_text(encoding="utf-8"))

@@ -41,11 +41,38 @@ code-reading order and troubleshooting.
 
 ## Data flow
 
-1. `drive_sync.py` downloads PDFs from the selected folder and its subfolders.
-2. `document_processing.py` checks PDF headings and font styling, keeps paper
-   sections together, and falls back to page boundaries when structure is unclear.
+The two learning-reference files are included alongside the PDFs. `index.csv`
+supplies paper numbers, canonical titles, phases, years and links.
+`how_to_read_llm_papers.md` supplies reading-depth recommendations, prerequisites,
+focus notes and study advice. The agent cites these files for learning guidance;
+the recommendations do not change PDF extraction or require visual interpretation.
+
+`study_materials.py` reads these small files from the manifest when needed. It
+builds phase/priority groups and heading-based guide passages for BM25 search and
+the shared MiniLM reranker. PDF vectors remain in Chroma. Updating the reference
+files requires no paper re-embedding; reference changes are tracked by evaluation
+hashes so an old evaluation cannot resume against different guidance.
+
+Both existing downloaded files have been registered in `sources.local.json`.
+The next Drive sync also downloads them, while continuing to exclude unrelated
+non-PDF files. Restart the web server to load changed Python code; an active
+PDF rebuild can continue. For a custom manifest, set `SOURCE_MANIFEST_PATH` in
+`.env` to the same file used by sync and ingestion.
+
+1. `drive_sync.py` downloads PDFs plus `index.csv` and `how_to_read_llm_papers.md`
+   from the selected folder and its subfolders. Other file types remain excluded.
+2. `document_processing.py` reads neural text, heading and caption regions through
+   one reusable worker in `neural_pdf_extraction.py`. Table-grid reconstruction
+   and image export are skipped. Slow neural work prints periodic warnings and
+   continues; page extraction and model startup have no time cutoffs.
+   Extraction errors or unusable results use page-based text fallback marked
+   structurally uncertain. Completed
+   neural pages keep nested headings; captions keep exact PDF pages. OCR is off.
+   Metadata reports in `data/extraction_reports` show coverage and fallback reasons.
 3. LangChain splits only oversized sections into at most 1,200 characters with
    120-character overlap. Each child chunk links to its complete parent section.
+   Sections are a flat list with heading breadcrumbs such as Methods > Training;
+   no section-to-section tree is stored. Detected subsections keep their own text.
    These are character limits, not guaranteed token counts.
 4. EmbeddingGemma embeds batches of 16 child chunks. Chroma stores child vectors
    for search and complete parent sections for answer context, plus Drive links,
@@ -386,3 +413,29 @@ up to five searches; larger plans display and save the remaining tasks for
 another approval. Unattended runs execute every task in one batch. Ordinary questions remain immediate. Bounded recent user
 and assistant messages support follow-up planning, not unrestricted dependent
 reasoning. Offline evaluation bypasses review and labels traces automatic_offline.
+
+### Restart indexing after an extraction update
+
+Stop the previous indexing process with Ctrl+C, then start a new process:
+
+```powershell
+.\.venv-research\Scripts\python.exe -m app.ingest sources.local.json
+```
+
+For the current v7 index, no full reset is needed. The new extraction profile is
+part of each paper's fingerprint, so papers built with the old extractor refresh
+once. Later resumes skip papers completed with this profile. Changed embedding
+models/dimensions or incompatible older index versions still require a deliberate
+rebuild. Never run two ingestion processes against the same Chroma directory.
+
+Progress shows each PDF page, extraction duration, embedding batches, storage
+writes and total paper time. Caption pointers support their explicit text and
+page location; they do not establish values inside an unread table or graph.
+`PDF_LAYOUT_WARN_SECONDS=30` controls periodic progress warnings only. Slow
+neural work keeps running until it completes, fails or the operator cancels.
+There are no extraction timeout settings or elapsed-time fallback rules.
+Ctrl+C cancels the command and its worker is cleaned up. Fallback, embedding
+and storage are separate stages with their own progress messages.
+The new extraction policy refreshes old paper fingerprints once. Unchanged resumes
+skip completed papers, including papers with reported fallback pages.
+See IMPLEMENTATION_GUIDE.md for the code-reading order and limitations.

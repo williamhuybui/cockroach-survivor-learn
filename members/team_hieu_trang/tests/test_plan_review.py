@@ -1,4 +1,8 @@
-"""A chat approval executes only the current saved plan, without replanning."""
+"""Test the browser approval/revision workflow for complex search plans.
+
+A plan ID identifies exact saved content; stale or duplicate actions must not
+execute an unintended proposal.
+"""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -27,7 +31,7 @@ def proposal(token="first", count=4):
 
 
 def test_proposal_persists_and_approval_uses_saved_tasks(monkeypatch):
-    monkeypatch.setattr(main, "respond", lambda *args: proposal())
+    monkeypatch.setattr(main, "handle_chat_message", lambda *args: proposal())
     first = client.post(
         "/api/chat", json={"message": "Multipart", "session_id": "s"}
     ).json()
@@ -46,7 +50,7 @@ def test_proposal_persists_and_approval_uses_saved_tasks(monkeypatch):
             "context": [],
         }
 
-    monkeypatch.setattr(main, "answer_with_context", execute)
+    monkeypatch.setattr(main, "answer_research_question", execute)
     assert (
         client.post(
             "/api/chat",
@@ -72,7 +76,7 @@ def test_revision_invalidates_old_approval(monkeypatch):
         calls.append((question, args))
         return proposal("first" if len(calls) == 1 else "revised")
 
-    monkeypatch.setattr(main, "respond", respond)
+    monkeypatch.setattr(main, "handle_chat_message", respond)
     client.post("/api/chat", json={"message": "Multipart", "session_id": "s"})
     result = client.post(
         "/api/chat",
@@ -98,7 +102,7 @@ def test_revision_invalidates_old_approval(monkeypatch):
 def test_review_node_skips_search_and_model(monkeypatch):
     monkeypatch.setattr(
         services,
-        "plan_question",
+        "plan_question_tasks",
         lambda *args: QuestionPlan(
             route="multipart",
             tasks=[SearchTask(question=f"Task {i}?") for i in range(4)],
@@ -106,10 +110,10 @@ def test_review_node_skips_search_and_model(monkeypatch):
     )
     monkeypatch.setattr(
         services,
-        "search",
+        "retrieve_relevant_passages",
         lambda *args, **kwargs: pytest.fail("Must wait for approval"),
     )
-    result = services.respond("Multipart", [])
+    result = services.handle_chat_message("Multipart", [])
     assert result["status"] == "awaiting_approval"
     assert len(result["plan"]["tasks"]) == 4
 
@@ -117,12 +121,14 @@ def test_review_node_skips_search_and_model(monkeypatch):
 def test_approved_plan_is_not_replanned_and_larger_plan_is_not_lost(monkeypatch):
     monkeypatch.setattr(
         services,
-        "plan_question",
+        "plan_question_tasks",
         lambda *args: pytest.fail("Never replan after approval"),
     )
-    monkeypatch.setattr(services, "search", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        services, "retrieve_relevant_passages", lambda *args, **kwargs: []
+    )
     saved = proposal(count=9)["plan"]
-    result = services.answer_with_context(
+    result = services.answer_research_question(
         "Original request", approved_plan=saved, require_review=True
     )
     assert len(result["plan"]["tasks"]) == 4
@@ -130,11 +136,11 @@ def test_approved_plan_is_not_replanned_and_larger_plan_is_not_lost(monkeypatch)
 
 
 def test_failed_approved_execution_releases_plan(monkeypatch):
-    monkeypatch.setattr(main, "respond", lambda *args: proposal())
+    monkeypatch.setattr(main, "handle_chat_message", lambda *args: proposal())
     client.post("/api/chat", json={"message": "Multipart", "session_id": "s"})
     monkeypatch.setattr(
         main,
-        "answer_with_context",
+        "answer_research_question",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             ValueError("Temporary model error")
         ),
@@ -150,7 +156,7 @@ def test_failed_approved_execution_releases_plan(monkeypatch):
 
 
 def test_pending_plan_is_scoped_to_session_and_deleted_with_it(monkeypatch):
-    monkeypatch.setattr(main, "respond", lambda *args: proposal())
+    monkeypatch.setattr(main, "handle_chat_message", lambda *args: proposal())
     client.post("/api/chat", json={"message": "Multipart", "session_id": "s"})
     assert (
         client.post(

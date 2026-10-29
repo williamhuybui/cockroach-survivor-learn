@@ -1,4 +1,9 @@
-"""Download PDFs from one Google Drive research folder for local indexing."""
+"""Download research PDFs plus the catalog/guide and write a local source manifest.
+
+Authentication and downloads happen only when this command runs. Each manifest row
+keeps the Drive ID, local file path, title and source URL needed by app.ingest for
+indexing and later citations.
+"""
 
 import argparse
 import json
@@ -9,21 +14,22 @@ from pathlib import Path
 from pydrive2.auth import GoogleAuth, RefreshError
 from pydrive2.drive import GoogleDrive
 
-from .config import ROOT
+from .config import ROOT, SOURCE_MANIFEST_PATH
+from .study_materials import STUDY_FILENAMES
 
 FOLDER_MIME = "application/vnd.google-apps.folder"
 
 
-def escape_drive_query(value: str) -> str:
-    """Escape a folder name before placing it in a Google Drive query."""
-    return value.replace("\\", "\\\\").replace("'", "\\'")
+def find_drive_folder_ids(drive: GoogleDrive, names: list[str]) -> list[str]:
+    """Resolve exact folder names in My Drive to unique folder IDs.
 
-
-def find_root_folders(drive: GoogleDrive, names: list[str]) -> list[str]:
-    """Find each configured folder by its exact name in My Drive."""
+    Reject missing or duplicate names so synchronization cannot silently choose the
+    wrong research collection.
+    """
     folder_ids = []
     for name in names:
-        escaped = escape_drive_query(name)
+        # Escape quotes and backslashes so a folder name stays inside the query value.
+        escaped = name.replace("\\", "\\\\").replace("'", "\\'")
         query = (
             "'root' in parents and trashed=false "
             f"and mimeType='{FOLDER_MIME}' and title='{escaped}'"
@@ -39,14 +45,12 @@ def find_root_folders(drive: GoogleDrive, names: list[str]) -> list[str]:
     return folder_ids
 
 
-def safe_name(value: str) -> str:
-    """Replace characters Windows does not allow in downloaded filenames."""
-    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", value).strip(" .")
-    return cleaned or "untitled"
+def authenticate_google_drive(client_secrets: Path, credentials: Path) -> GoogleDrive:
+    """Create an authenticated Drive client using local OAuth configuration.
 
-
-def authenticate(client_secrets: Path, credentials: Path) -> GoogleDrive:
-    """Reuse saved Google OAuth credentials or open the first-time consent flow."""
+    Reuse or refresh saved credentials when possible; otherwise open Google's
+    browser consent flow and save the new credentials for the next sync.
+    """
     if not client_secrets.is_file():
         raise FileNotFoundError(
             f"Missing {client_secrets}. Download the OAuth JSON, rename it client_secrets.json, "
@@ -75,8 +79,12 @@ def authenticate(client_secrets: Path, credentials: Path) -> GoogleDrive:
     return GoogleDrive(gauth)
 
 
-def list_tree(drive: GoogleDrive, folder_id: str):
-    """Walk the selected Drive folder and subfolders, excluding trashed files."""
+def walk_drive_files(drive: GoogleDrive, folder_id: str):
+    """Yield non-folder files from the selected folder and all its subfolders.
+
+    Keep a list of folders still to visit and exclude trashed items from each Drive
+    query.
+    """
     pending = [folder_id]
     while pending:
         parent = pending.pop()
@@ -90,42 +98,40 @@ def list_tree(drive: GoogleDrive, folder_id: str):
                 yield item
 
 
-def download_supported(item, output_dir: Path):
+def download_research_source(item, output_dir: Path):
+    """Save a PDF or one of the two named catalog/guide files from Drive.
+
+    Keep unrelated file types excluded. A native Google Doc named after the guide
+    is exported as text; its headings are still available as reference content.
+    Return the local path for inclusion in the source manifest.
     """
-    Download PDF files safely from Google Drive.
-
-    - Skip non-PDF files.
-    - Download to a temporary file first.
-    - Rename the temporary file after a successful download.
-    - Remove the temporary file if the download fails.
-    """
-
-    original = safe_name(item["title"])
-
-    if Path(original).suffix.lower() != ".pdf":
-        print(f"SKIP non-PDF Drive file: {item['title']}")
+    # Replace characters Windows forbids in filenames before saving the PDF.
+    original = (
+        re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", item["title"]).strip(" .") or "untitled"
+    )
+    extension = Path(original).suffix.lower()
+    native_guide = item.get(
+        "mimeType"
+    ) == "application/vnd.google-apps.document" and original.casefold() in {
+        "how_to_read_llm_papers",
+        "how_to_read_llm_papers.md",
+    }
+    if native_guide:
+        original = "how_to_read_llm_papers.md"
+    if extension != ".pdf" and original.casefold() not in STUDY_FILENAMES:
+        print(f"SKIP unrelated Drive file: {item['title']}")
         return None
-
-    # Final PDF location
+    if original.casefold() in STUDY_FILENAMES:
+        original = original.casefold()
     target = output_dir / f"{item['id']}_{original}"
-
-    # Temporary download location
-    temp = target.with_name(target.name + ".tmp")
-
-    try:
-        # Step 1: Download into the temporary file
-        item.GetContentFile(str(temp))
-
-        # Step 2: Replace the final file after successful download
-        temp.replace(target)
-
-    finally:
-        # Step 3: Remove leftover temporary files
-        temp.unlink(missing_ok=True)
-
+    if native_guide:
+        item.GetContentFile(str(target), mimetype="text/plain")
+    else:
+        item.GetContentFile(str(target))
     return target
 
-def sync(
+
+def sync_research_folder(
     folder_ids: list[str],
     folder_names: list[str],
     output_dir: Path,
@@ -133,12 +139,17 @@ def sync(
     client_secrets: Path,
     credentials: Path,
 ):
-    """Refresh one research folder and write a manifest of its PDFs."""
+    """Download PDFs and the named learning references from the selected folder.
+
+    Require one root folder, deduplicate Drive file IDs and keep citation links.
+    Reject an empty result rather than replacing the manifest with an accidental
+    empty collection.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
-    drive = authenticate(client_secrets, credentials)
+    drive = authenticate_google_drive(client_secrets, credentials)
     selected_folder_ids = list(folder_ids)
     if folder_names:
-        selected_folder_ids.extend(find_root_folders(drive, folder_names))
+        selected_folder_ids.extend(find_drive_folder_ids(drive, folder_names))
     selected_folder_ids = list(dict.fromkeys(selected_folder_ids))
     if len(selected_folder_ids) != 1:
         raise ValueError("Configure exactly one Google Drive research-paper folder")
@@ -146,11 +157,11 @@ def sync(
     drive_rows = []
     seen_file_ids = set()
     for folder_id in selected_folder_ids:
-        for item in list_tree(drive, folder_id):
+        for item in walk_drive_files(drive, folder_id):
             if item["id"] in seen_file_ids:
                 continue
             seen_file_ids.add(item["id"])
-            target = download_supported(item, output_dir)
+            target = download_research_source(item, output_dir)
             if target is None:
                 continue
             try:
@@ -161,9 +172,15 @@ def sync(
             row = {
                 "id": source_id,
                 "path": local_path.as_posix(),
-                "title": item["title"],
+                "title": next(
+                    (
+                        name
+                        for name in STUDY_FILENAMES
+                        if target.name.endswith("_" + name)
+                    ),
+                    item["title"],
+                ),
                 "source_type": "google_drive",
-                "parent_ids": [parent["id"] for parent in item.get("parents", [])],
                 "source_url": item.get("alternateLink")
                 or f"https://drive.google.com/open?id={item['id']}",
             }
@@ -171,7 +188,7 @@ def sync(
             print(f"SYNC {item['title']} -> {local_path}")
 
     combined = sorted(drive_rows, key=lambda row: row["title"].casefold())
-    if not combined:
+    if not any(Path(row["path"]).suffix.lower() == ".pdf" for row in combined):
         raise ValueError("No PDFs were found in the research-paper folder")
     manifest.write_text(json.dumps(combined, indent=2) + "\n", encoding="utf-8")
     print(
@@ -186,14 +203,18 @@ def sync(
 
 
 def main():
-    """Parse arguments to synchronize Drive."""
+    """Read sync paths and folder selection from command arguments or .env.
+
+    Pass the resolved settings to sync_research_folder(); embedding and index
+    updates happen in the separate ingestion command.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--folder-id", action="append", dest="folder_ids")
     parser.add_argument("--folder-name", action="append", dest="folder_names")
     parser.add_argument(
         "--output-dir", type=Path, default=ROOT / "synced_sources" / "drive"
     )
-    parser.add_argument("--manifest", type=Path, default=ROOT / "sources.local.json")
+    parser.add_argument("--manifest", type=Path, default=SOURCE_MANIFEST_PATH)
     parser.add_argument(
         "--client-secrets", type=Path, default=ROOT / "client_secrets.json"
     )
@@ -206,7 +227,7 @@ def main():
         parser.error(
             "Set RESEARCH_FOLDER_ID in .env, or pass --folder-id or --folder-name"
         )
-    sync(
+    sync_research_folder(
         folder_ids,
         folder_names,
         args.output_dir.resolve(),

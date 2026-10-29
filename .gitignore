@@ -6,6 +6,11 @@
 # Python virtual environments
 .venv/
 .venvv/
+.venv-research/
+
+# Local research indexes and the retired team folder
+data/chroma/
+/Team Hieu&Trang_code/
 
 # Google Drive credentials
 client_secrets.json

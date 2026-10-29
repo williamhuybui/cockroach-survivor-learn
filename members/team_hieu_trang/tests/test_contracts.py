@@ -1,3 +1,9 @@
+"""Test quiz request validation, command parsing and answer-key handling.
+
+Malformed counts, choices, citations and submissions must fail before a quiz is
+stored or graded.
+"""
+
 import pytest
 from pydantic import ValidationError
 
@@ -5,9 +11,9 @@ from app.quiz_validation import (
     Question,
     QuizRequest,
     grade_quiz,
+    hide_quiz_answer_key,
     parse_quiz_command,
-    public_quiz,
-    validate_source_ids,
+    validate_quiz_citations,
 )
 
 
@@ -41,11 +47,11 @@ def test_duplicate_options_rejected():
 
 def test_unknown_evidence_rejected():
     with pytest.raises(ValueError):
-        validate_source_ids(["invented"], [{"id": "source-1"}])
+        validate_quiz_citations(["invented"], [{"id": "source-1"}])
 
 
 def test_public_quiz_does_not_leak_answer_key():
-    result = public_quiz(
+    result = hide_quiz_answer_key(
         {"topic": "RAG", "difficulty": "easy", "questions": [question()]}
     )
     assert set(result["questions"][0]) == {"question", "options"}

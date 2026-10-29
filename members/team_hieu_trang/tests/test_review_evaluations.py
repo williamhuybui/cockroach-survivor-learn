@@ -1,11 +1,19 @@
-"""Check the small CSV workflow used for human evaluation review."""
+"""Test CSV export/import of human feedback for saved evaluation answers.
+
+Validate reviewer fields and IDs before updating a report, preserving unfinished
+feedback and rejecting inconsistent claim counts.
+"""
 
 import csv
 import json
 
 import pytest
 
-from app.review_evaluations import export_review, import_review, reviewed_metrics
+from app.review_evaluations import (
+    export_review_csv,
+    import_review_csv,
+    validate_review_updates,
+)
 
 
 def test_export_then_import_review_updates_summary(tmp_path):
@@ -37,7 +45,7 @@ def test_export_then_import_review_updates_summary(tmp_path):
         )
     )
     review_path = tmp_path / "review.csv"
-    export_review(report_path, review_path)
+    export_review_csv(report_path, review_path)
 
     with review_path.open(newline="", encoding="utf-8-sig") as stream:
         rows = list(csv.DictReader(stream))
@@ -57,7 +65,7 @@ def test_export_then_import_review_updates_summary(tmp_path):
         writer.writeheader()
         writer.writerows(rows)
 
-    report = import_review(report_path, review_path)
+    report = import_review_csv(report_path, review_path)
     assert report["summary"]["all"]["reviewed_answer_accuracy"] == 1
     assert report["summary"]["all"]["reviewed_unsupported_claim_rate"] == 0
 
@@ -67,11 +75,13 @@ def test_partial_count_edit_cannot_make_saved_review_inconsistent():
 
     existing = {"supported_claims_review": 3, "total_claims_review": 4}
     with pytest.raises(ValueError, match="cannot exceed"):
-        reviewed_metrics({"total_claims_review": "2"}, existing)
+        validate_review_updates({"total_claims_review": "2"}, existing)
     with pytest.raises(ValueError, match="both"):
-        reviewed_metrics({"supported_claims_review": "1"}, {})
+        validate_review_updates({"supported_claims_review": "1"}, {})
     assert (
-        reviewed_metrics({"total_claims_review": "5"}, existing)["total_claims_review"]
+        validate_review_updates({"total_claims_review": "5"}, existing)[
+            "total_claims_review"
+        ]
         == 5
     )
 
@@ -83,12 +93,12 @@ def test_export_preserves_existing_files(tmp_path):
     original = '{"results": []}'
     report.write_text(original)
     with pytest.raises(ValueError, match="separate"):
-        export_review(report, report)
+        export_review_csv(report, report)
     assert report.read_text() == original
     output = tmp_path / "review.csv"
     output.write_text("existing human work")
     with pytest.raises(FileExistsError):
-        export_review(report, output)
+        export_review_csv(report, output)
     assert output.read_text() == "existing human work"
 
 
@@ -101,5 +111,5 @@ def test_invalid_import_leaves_report_unchanged(tmp_path):
     review = tmp_path / "review.csv"
     review.write_text("id,correctness_review\na,correct\na,incorrect\n")
     with pytest.raises(ValueError, match="Duplicate"):
-        import_review(report, review)
+        import_review_csv(report, review)
     assert report.read_text() == original

@@ -1,10 +1,11 @@
-"""Check lexical retrieval, document scoping, and bounded parent expansion."""
+"""Test keyword/vector candidate merging, reranking and section expansion.
 
-from pathlib import Path
+Use controlled scores and temporary collections to verify relevance ordering, scope
+and evidence budgets.
+"""
 
 from app import retrieval
-from app.document_processing import classify_format
-from app.paper_store import parent_collection
+from app.paper_store import open_parent_section_store
 
 
 def test_bm25_finds_exact_term_and_ignores_no_matches():
@@ -12,12 +13,12 @@ def test_bm25_finds_exact_term_and_ignores_no_matches():
         {"id": "a", "content": "GRPO uses group scores"},
         {"id": "b", "content": "Attention has keys and queries"},
     ]
-    assert retrieval.keyword_candidates("GRPO", records)[0]["id"] == "a"
-    assert retrieval.keyword_candidates("xyzabsent", records) == []
+    assert retrieval.find_bm25_candidates("GRPO", records)[0]["id"] == "a"
+    assert retrieval.find_bm25_candidates("xyzabsent", records) == []
 
 
 def test_parent_expansion_keeps_hit_and_respects_budget():
-    parent_collection().add(
+    open_parent_section_store().add(
         ids=["p"],
         documents=["context " * 100 + "THE IMPORTANT FACT" + " continuation" * 1000],
         embeddings=[[1.0]],
@@ -27,16 +28,12 @@ def test_parent_expansion_keeps_hit_and_respects_budget():
         "parent_id": "p",
         "content": "Paper: A\nSection: Methods\nTHE IMPORTANT FACT",
     }
-    result = retrieval.expand_parents([row, {**row, "id": "duplicate"}], 5)
+    result = retrieval.expand_parent_section_windows(
+        [row, {**row, "id": "duplicate"}], 5
+    )
     assert len(result) == 1
     assert "THE IMPORTANT FACT" in result[0]["content"]
     assert len(result[0]["content"]) <= 2400
-
-
-def test_format_classification_does_not_call_every_pdf_a_paper():
-    assert classify_format(Path("notes.PDF")) == "pdf"
-    assert classify_format(Path("slides.pptx")) == "slides"
-    assert classify_format(Path("unknown.exe")) == "unsupported"
 
 
 def test_internal_paper_scope_matches_exact_title(monkeypatch):
@@ -49,17 +46,19 @@ def test_internal_paper_scope_matches_exact_title(monkeypatch):
         "metadatas": [{"title": "Attention.pdf"}, {"title": "Attention.pdf survey"}],
     }
     monkeypatch.setattr(
-        retrieval, "collection", lambda: SimpleNamespace(get=lambda **kwargs: saved)
+        retrieval,
+        "open_chunk_store",
+        lambda: SimpleNamespace(get=lambda **kwargs: saved),
     )
-    assert [row["id"] for row in retrieval.matching_records("Attention.pdf")] == ["a"]
-    assert len(retrieval.matching_records()) == 2
+    assert [row["id"] for row in retrieval.load_scoped_chunks("Attention.pdf")] == ["a"]
+    assert len(retrieval.load_scoped_chunks()) == 2
 
 
 def test_dense_paper_filter_runs_before_top_k(monkeypatch):
     """The real local Chroma filter can find a scoped hit outside global top one."""
-    from app.paper_store import collection
+    from app.paper_store import open_chunk_store
 
-    store = collection()
+    store = open_chunk_store()
     meta = {
         "source_url": "https://example.com",
         "location": "page 1",
@@ -71,8 +70,9 @@ def test_dense_paper_filter_runs_before_top_k(monkeypatch):
         embeddings=[[1.0, 0.0], [0.0, 1.0]],
         metadatas=[{**meta, "title": "A"}, {**meta, "title": "B"}],
     )
-    monkeypatch.setattr(retrieval, "embed_query", lambda query: [1.0, 0.0])
-    assert retrieval.retrieve_candidates("question", count=1)[0]["title"] == "A"
+    monkeypatch.setattr(retrieval, "embed_search_question", lambda query: [1.0, 0.0])
+    assert retrieval.find_vector_candidates("question", count=1)[0]["title"] == "A"
     assert (
-        retrieval.retrieve_candidates("question", count=1, paper="B")[0]["title"] == "B"
+        retrieval.find_vector_candidates("question", count=1, paper="B")[0]["title"]
+        == "B"
     )

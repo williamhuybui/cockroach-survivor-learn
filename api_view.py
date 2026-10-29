@@ -50,7 +50,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # so members.<folder> 
 
 from langgraph.graph import StateGraph, START, END
 
-csv.field_size_limit(sys.maxsize)  # the content column is huge
+csv.field_size_limit(2_147_483_647)  # the content column is huge
 MAX_CHARS = 8000  # how much of the document the model sees (keeps it inside Ollama's context)
 TMP_DIR = Path(__file__).resolve().parent / "tmp"
 
@@ -177,38 +177,52 @@ def not_implemented(team: str):
 def team1_agent(question: str) -> dict:
     """Connect Team 1's existing LangGraph RAG agent to the shared API."""
 
-    from members.team_hieu_trang.app.services import answer_with_context
+    try:
+        from threading import Lock
 
-    result = answer_with_context(
-        question,
-        history=[],
-        capture_evidence=False,
-        require_review=False,
-        allow_clarification=False,
-    )
+        from members.team_hieu_trang.app.paper_store import (
+            open_chunk_store,
+            open_parent_section_store,
+        )
+        from members.team_hieu_trang.app.services import answer_research_question
 
-    # Extract the answer
-    answer = str(result.get("answer") or "").strip()
+        # Concurrent first requests share one lock while Chroma opens its stores.
+        state = team1_agent.__dict__
+        initialization_lock = state.setdefault("_chroma_lock", Lock())
+        if not state.get("_chroma_ready", False):
+            with initialization_lock:
+                if not state.get("_chroma_ready", False):
+                    open_chunk_store()
+                    open_parent_section_store()
+                    state["_chroma_ready"] = True
 
-    if not answer:
-        answer = "I don't know - this is not in the documents."
+        result = answer_research_question(
+            question,
+            history=[],
+            capture_evidence=False,
+            require_review=False,
+        )
 
-    # Convert source metadata to document titles
-    sources = []
+        # The team agent returns source cards; the gateway needs document titles.
+        sources = [
+            str(source["title"])
+            for source in result.get("sources") or []
+            if isinstance(source, dict) and source.get("title")
+        ]
+        return {
+            "answer": str(result.get("answer") or "").strip()
+            or "I don't know - this is not in the documents.",
+            "sources": list(dict.fromkeys(sources)),
+        }
+    except Exception:
+        # Keep a local model/index outage from crashing the shared evaluation run.
+        import logging
 
-    for source in result.get("sources") or []:
-        if isinstance(source, dict):
-            title = source.get("title") or source.get("source_url")
-        else:
-            title = source
-
-        if title:
-            sources.append(str(title))
-
-    return {
-        "answer": answer,
-        "sources": list(dict.fromkeys(sources)),
-    }
+        logging.getLogger(__name__).exception("Team 1 research agent failed")
+        return {
+            "answer": "I don't know - the local research agent could not complete this request.",
+            "sources": [],
+        }
 
 # ============================== TEAM 2: Ha & Tri ==================================
 def team2_agent(question: str) -> dict:

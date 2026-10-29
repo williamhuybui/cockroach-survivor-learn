@@ -1,8 +1,9 @@
-"""Export and import small human-review CSV files for an evaluation report.
+"""Exchange saved evaluation results with human reviewers through CSV files.
 
-Run:
-    python -m app.review_evaluations export report.json review.csv
-    python -m app.review_evaluations import report.json completed-review.csv
+Export questions, answers, sources and review fields, then validate and import
+completed reviews to update report metrics. Feedback changes offline evaluation
+records, not the agent's answer-generation inputs. Run export or import with python
+-m app.review_evaluations.
 """
 
 import argparse
@@ -10,7 +11,7 @@ import csv
 import json
 from pathlib import Path
 
-from .evaluate import summarize
+from .evaluate import summarize_evaluation_results
 
 REVIEW_FIELDS = [
     "correctness_review",
@@ -31,8 +32,12 @@ CORRECTNESS = {"correct", "incorrect", "partial"}
 CITATION_SUPPORT = {"supported", "unsupported", "partial"}
 
 
-def load_report(path: Path) -> dict:
-    """Read an evaluation JSON report and reject files without saved results."""
+def load_evaluation_report(path: Path) -> dict:
+    """Read a saved evaluation JSON file and require a results list.
+
+    Both CSV export and import use this check before interpreting answer or review
+    records.
+    """
 
     report = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(report, dict) or not isinstance(report.get("results"), list):
@@ -40,21 +45,17 @@ def load_report(path: Path) -> dict:
     return report
 
 
-def source_summary(result: dict) -> str:
-    """Make citations readable in a spreadsheet without including passage bodies."""
+def export_review_csv(report_path: Path, output_path: Path) -> None:
+    """Create a spreadsheet-friendly file of saved answers and review columns.
 
-    return "; ".join(
-        f"{row.get('title', 'Untitled')} ({row.get('location', 'unknown location')})"
-        for row in result.get("sources", [])
-    )
-
-
-def export_review(report_path: Path, output_path: Path) -> None:
-    """Export answers and existing review fields without overwriting another file."""
+    Show source titles/locations and existing feedback without copying full
+    passages. Create a new file rather than overwriting another review or the
+    original report.
+    """
 
     if output_path.resolve() == report_path.resolve():
         raise ValueError("The review CSV must be separate from the JSON report")
-    report = load_report(report_path)
+    report = load_evaluation_report(report_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("x", encoding="utf-8-sig", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=REVIEW_COLUMNS)
@@ -62,20 +63,29 @@ def export_review(report_path: Path, output_path: Path) -> None:
         for row in report["results"]:
             result = row.get("result", {})
             metrics = row.get("metrics", {})
+            # Show paper titles and locations in the spreadsheet, not full passages.
+            sources = "; ".join(
+                f"{source.get('title', 'Untitled')} ({source.get('location', 'unknown location')})"
+                for source in result.get("sources", [])
+            )
             writer.writerow(
                 {
                     "id": row["id"],
                     "question": row.get("question", ""),
                     "answer": result.get("answer", ""),
                     "status": result.get("status", ""),
-                    "sources": source_summary(result),
+                    "sources": sources,
                     **{field: metrics.get(field, "") for field in REVIEW_FIELDS},
                 }
             )
 
 
-def optional_choice(value: str | None, allowed: set[str], field: str) -> str | None:
-    """Validate a non-empty reviewer choice while allowing unfinished rows."""
+def parse_review_choice(value: str | None, allowed: set[str], field: str) -> str | None:
+    """Normalize and validate one reviewer category, such as correct or partial.
+
+    Return None for a blank field so an unfinished spreadsheet cell does not erase a
+    previously saved review.
+    """
 
     cleaned = (value or "").strip().casefold()
     if not cleaned:
@@ -85,8 +95,12 @@ def optional_choice(value: str | None, allowed: set[str], field: str) -> str | N
     return cleaned
 
 
-def optional_count(value: str | None, field: str) -> int | None:
-    """Validate a non-negative claim count while allowing unfinished rows."""
+def parse_review_count(value: str | None, field: str) -> int | None:
+    """Read a nonnegative whole-number claim count from a review cell.
+
+    Return None for blank cells so partial reviews can be imported without replacing
+    existing counts.
+    """
 
     cleaned = (value or "").strip()
     if not cleaned:
@@ -96,22 +110,27 @@ def optional_count(value: str | None, field: str) -> int | None:
     return int(cleaned)
 
 
-def reviewed_metrics(review: dict, existing: dict) -> dict:
-    """Validate one review and preserve saved values when CSV fields are blank."""
+def validate_review_updates(review: dict, existing: dict) -> dict:
+    """Merge one row's feedback with existing metrics after checking allowed values.
+
+    Require supported and total claim counts together and reject a supported count
+    larger than the total. Preserve existing values where the reviewer left fields
+    blank.
+    """
 
     updates = {
-        "correctness_review": optional_choice(
+        "correctness_review": parse_review_choice(
             review.get("correctness_review", ""), CORRECTNESS, "correctness_review"
         ),
-        "citation_support_review": optional_choice(
+        "citation_support_review": parse_review_choice(
             review.get("citation_support_review", ""),
             CITATION_SUPPORT,
             "citation_support_review",
         ),
-        "supported_claims_review": optional_count(
+        "supported_claims_review": parse_review_count(
             review.get("supported_claims_review", ""), "supported_claims_review"
         ),
-        "total_claims_review": optional_count(
+        "total_claims_review": parse_review_count(
             review.get("total_claims_review", ""), "total_claims_review"
         ),
     }
@@ -131,10 +150,14 @@ def reviewed_metrics(review: dict, existing: dict) -> dict:
     return metrics
 
 
-def import_review(report_path: Path, review_path: Path) -> dict:
-    """Validate the entire CSV before saving reviewed metrics into the report."""
+def import_review_csv(report_path: Path, review_path: Path) -> dict:
+    """Validate review rows, merge them by case ID and recalculate report summaries.
 
-    report = load_report(report_path)
+    Reject unknown or duplicate IDs and invalid fields before writing the JSON
+    report, so a bad spreadsheet does not partially update saved feedback.
+    """
+
+    report = load_evaluation_report(report_path)
     saved = {row["id"]: row for row in report["results"]}
     with review_path.open(encoding="utf-8-sig", newline="") as stream:
         reviews = list(csv.DictReader(stream))
@@ -153,8 +176,8 @@ def import_review(report_path: Path, review_path: Path) -> dict:
             raise ValueError(
                 f"Cannot review failed case {case_id}; retry evaluation first"
             )
-        row["metrics"] = reviewed_metrics(review, row.get("metrics", {}))
-    report["summary"] = summarize(report["results"])
+        row["metrics"] = validate_review_updates(review, row.get("metrics", {}))
+    report["summary"] = summarize_evaluation_results(report["results"])
     report_path.write_text(
         json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
     )
@@ -168,6 +191,6 @@ if __name__ == "__main__":
     parser.add_argument("review", type=Path)
     arguments = parser.parse_args()
     if arguments.action == "export":
-        export_review(arguments.report, arguments.review)
+        export_review_csv(arguments.report, arguments.review)
     else:
-        import_review(arguments.report, arguments.review)
+        import_review_csv(arguments.report, arguments.review)

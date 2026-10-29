@@ -1,27 +1,39 @@
-"""One daily paper question in the shared single-user workspace."""
+"""Create and grade one research-paper quiz question per team calendar day.
+
+Reuse the retrieval and quiz-generation code, but save the selected question and
+first submitted answer in SQLite so refreshes do not generate a different challenge.
+"""
 
 import json
 from datetime import date, datetime
+from sqlite3 import Row
 from zoneinfo import ZoneInfo
 
 from .config import TEAM_TIMEZONE
 from .db import open_database
-from .quiz_validation import QuizRequest, grade_quiz, public_quiz
-from .retrieval import paper_for_daily
-from .services import quiz_payload
+from .quiz_validation import QuizRequest, grade_quiz, hide_quiz_answer_key
+from .retrieval import select_daily_paper_passages
+from .services import generate_quiz_content
 
 
-def team_day() -> date:
-    """Use the team's calendar day rather than the server's local timezone."""
+def get_team_date() -> date:
+    """Return today's date in the configured team timezone.
+
+    Use one shared calendar boundary even when the server runs in another timezone.
+    """
 
     return datetime.now(ZoneInfo(TEAM_TIMEZONE)).date()
 
 
-def daily_result(challenge: dict) -> dict:
-    """Hide the answer until this workspace submits its first attempt."""
+def build_daily_challenge_response(challenge: Row) -> dict:
+    """Convert a saved daily-challenge row into the browser response.
 
-    payload = challenge["payload"]
-    result = {"day": challenge["day"], "kind": "daily", **public_quiz(payload)}
+    Hide the answer key before submission; afterward include the saved choice,
+    score, explanations and sources.
+    """
+
+    payload = json.loads(challenge["payload"])
+    result = {"day": challenge["day"], "kind": "daily", **hide_quiz_answer_key(payload)}
     if challenge["answer"] is not None:
         chosen = challenge["answer"]
         result.update(
@@ -37,22 +49,25 @@ def daily_result(challenge: dict) -> dict:
     return result
 
 
-def get_daily() -> dict:
-    """Reuse today's saved question or create one from an indexed paper."""
+def get_or_create_daily_challenge() -> dict:
+    """Return today's saved question, generating it from indexed evidence if absent.
 
-    day = team_day().isoformat()
+    Save the question before returning it so subsequent requests see the same
+    challenge.
+    """
+
+    today = get_team_date()
+    day = today.isoformat()
     with open_database() as database:
         row = database.execute(
             "SELECT * FROM daily_challenges WHERE day = ?", (day,)
         ).fetchone()
     if row:
-        return daily_result(
-            {"day": day, "payload": json.loads(row["payload"]), "answer": row["answer"]}
-        )
-    evidence = paper_for_daily(date.fromisoformat(day).toordinal())
+        return build_daily_challenge_response(row)
+    evidence = select_daily_paper_passages(today.toordinal())
     if not evidence:
         raise ValueError("Sync research PDFs before starting the daily challenge")
-    payload = quiz_payload(
+    payload = generate_quiz_content(
         QuizRequest(topic=evidence[0]["title"], difficulty="medium", count=1), evidence
     )
     with open_database() as database:
@@ -63,13 +78,15 @@ def get_daily() -> dict:
         row = database.execute(
             "SELECT * FROM daily_challenges WHERE day = ?", (day,)
         ).fetchone()
-    return daily_result(
-        {"day": day, "payload": json.loads(row["payload"]), "answer": row["answer"]}
-    )
+    return build_daily_challenge_response(row)
 
 
-def submit_daily(day: date, answers: list[int]) -> dict:
-    """Store the first answer; repeated submissions return the saved result."""
+def submit_daily_challenge(day: date, answers: list[int]) -> dict:
+    """Validate and save the first answer for the displayed challenge date.
+
+    Repeated submissions return the saved result rather than changing the recorded
+    first answer.
+    """
 
     with open_database() as database:
         row = database.execute(
@@ -84,8 +101,6 @@ def submit_daily(day: date, answers: list[int]) -> dict:
             (answers[0], day.isoformat()),
         )
         saved = database.execute(
-            "SELECT answer FROM daily_challenges WHERE day = ?", (day.isoformat(),)
+            "SELECT * FROM daily_challenges WHERE day = ?", (day.isoformat(),)
         ).fetchone()
-    return daily_result(
-        {"day": day.isoformat(), "payload": payload, "answer": saved["answer"]}
-    )
+    return build_daily_challenge_response(saved)

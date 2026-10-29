@@ -1,4 +1,3 @@
-
 """Inspect and score PDF section extraction and chunking quality.
 
 Usage:
@@ -23,10 +22,9 @@ from statistics import mean, median
 
 from app.document_processing import (
     MAX_CHUNK_CHARACTERS,
-    extract_sections,
-    chunk_sections,
+    extract_pdf_sections,
+    split_sections_into_chunks,
 )
-
 
 PAPER_DIRECTORY = Path("synced_sources/drive")
 DEFAULT_PAPER = "Attention_Is_All_You_Need"
@@ -60,9 +58,7 @@ def find_paper(name: str) -> Path:
     )
 
     if not matches:
-        raise FileNotFoundError(
-            f"No PDF found matching '{name}' in {PAPER_DIRECTORY}"
-        )
+        raise FileNotFoundError(f"No PDF found matching '{name}' in {PAPER_DIRECTORY}")
 
     if len(matches) > 1:
         print("\nMultiple PDFs found:")
@@ -96,9 +92,6 @@ def chunk_issues(chunk) -> list[str]:
     if metadata.get("section_index") is None:
         issues.append("Missing section index")
 
-    if metadata.get("child_index") is None:
-        issues.append("Missing child index")
-
     for pattern in NOISE_PATTERNS:
         if re.search(pattern, content, flags=re.IGNORECASE):
             issues.append("Possible PDF metadata or attribution noise")
@@ -121,10 +114,7 @@ def score_quality(sections, chunks) -> dict:
     lengths = [len(c.page_content) for c in chunks]
 
     # 1. Size compliance: 30 points.
-    valid_sizes = sum(
-        0 < length <= MAX_CHUNK_CHARACTERS
-        for length in lengths
-    )
+    valid_sizes = sum(0 < length <= MAX_CHUNK_CHARACTERS for length in lengths)
     size_score = 30 * valid_sizes / total
 
     # 2. Metadata completeness: 25 points.
@@ -132,25 +122,18 @@ def score_quality(sections, chunks) -> dict:
         "location",
         "strategy",
         "section_index",
-        "child_index",
     ]
 
     complete_fields = sum(
-        chunk.metadata.get(field) is not None
-        and chunk.metadata.get(field) != ""
+        chunk.metadata.get(field) is not None and chunk.metadata.get(field) != ""
         for chunk in chunks
         for field in required_fields
     )
 
-    metadata_score = (
-        25 * complete_fields / (total * len(required_fields))
-    )
+    metadata_score = 25 * complete_fields / (total * len(required_fields))
 
     # 3. Content substance: 25 points.
-    substance_values = [
-        min(length / MIN_USEFUL_CHARACTERS, 1.0)
-        for length in lengths
-    ]
+    substance_values = [min(length / MIN_USEFUL_CHARACTERS, 1.0) for length in lengths]
     substance_score = 25 * mean(substance_values)
 
     # 4. Content cleanliness: 20 points.
@@ -173,25 +156,16 @@ def score_quality(sections, chunks) -> dict:
     issues = []
 
     oversized = total - valid_sizes
-    short = sum(
-        length < MIN_USEFUL_CHARACTERS
-        for length in lengths
-    )
+    short = sum(length < MIN_USEFUL_CHARACTERS for length in lengths)
 
     if oversized:
-        issues.append(
-            f"{oversized} chunks violate size limits"
-        )
+        issues.append(f"{oversized} chunks violate size limits")
 
     if short:
-        issues.append(
-            f"{short} chunks are under 200 characters"
-        )
+        issues.append(f"{short} chunks are under 200 characters")
 
     if noisy_chunks:
-        issues.append(
-            f"{noisy_chunks} chunks contain possible PDF artifacts"
-        )
+        issues.append(f"{noisy_chunks} chunks contain possible PDF artifacts")
 
     # Identify sections with very little content.
     tiny_sections = [
@@ -227,10 +201,7 @@ def print_quality_report(report: dict) -> None:
     }
 
     for category, value in report["scores"].items():
-        print(
-            f"{category}: "
-            f"{value:.1f}/{maximums[category]}"
-        )
+        print(f"{category}: {value:.1f}/{maximums[category]}")
 
     print("\n========== DETECTED ISSUES ==========")
 
@@ -247,8 +218,8 @@ def inspect_paper(
 ) -> None:
     """Inspect sections, chunks, and heuristic quality."""
 
-    document_type, sections = extract_sections(pdf_path)
-    chunks = chunk_sections(sections, pdf_path.stem)
+    document_type, sections = extract_pdf_sections(pdf_path)
+    chunks = split_sections_into_chunks(sections, pdf_path.stem)
 
     print("\n========== PAPER SUMMARY ==========")
     print("PDF:", pdf_path.name)
@@ -277,18 +248,12 @@ def inspect_paper(
 
         print(
             "Chunks under 200 characters:",
-            sum(
-                length < MIN_USEFUL_CHARACTERS
-                for length in lengths
-            ),
+            sum(length < MIN_USEFUL_CHARACTERS for length in lengths),
         )
 
         print(
             "Chunks exceeding limit:",
-            sum(
-                length > MAX_CHUNK_CHARACTERS
-                for length in lengths
-            ),
+            sum(length > MAX_CHUNK_CHARACTERS for length in lengths),
         )
     else:
         print("No chunks were produced.")
@@ -305,7 +270,6 @@ def inspect_paper(
         print("Location:", chunk.metadata.get("location"))
         print("Section:", chunk.metadata.get("heading"))
         print("Section index:", chunk.metadata.get("section_index"))
-        print("Child index:", chunk.metadata.get("child_index"))
         print("Strategy:", chunk.metadata.get("strategy"))
         print("Length:", len(chunk.page_content))
 
@@ -335,32 +299,36 @@ def inspect_all_papers() -> None:
 
     for pdf_path in pdf_files:
         try:
-            document_type, sections = extract_sections(pdf_path)
-            chunks = chunk_sections(sections, pdf_path.stem)
+            document_type, sections = extract_pdf_sections(pdf_path)
+            chunks = split_sections_into_chunks(sections, pdf_path.stem)
             report = score_quality(sections, chunks)
 
-            results.append({
-                "paper": pdf_path.name,
-                "document_type": document_type,
-                "sections": len(sections),
-                "chunks": len(chunks),
-                "score": report["overall"],
-                "issue_count": len(report["issues"]),
-                "issues": "; ".join(report["issues"]),
-                "status": "success",
-            })
+            results.append(
+                {
+                    "paper": pdf_path.name,
+                    "document_type": document_type,
+                    "sections": len(sections),
+                    "chunks": len(chunks),
+                    "score": report["overall"],
+                    "issue_count": len(report["issues"]),
+                    "issues": "; ".join(report["issues"]),
+                    "status": "success",
+                }
+            )
 
-        except Exception as error:
-            results.append({
-                "paper": pdf_path.name,
-                "document_type": "",
-                "sections": 0,
-                "chunks": 0,
-                "score": "",
-                "issue_count": 1,
-                "issues": str(error),
-                "status": "error",
-            })
+        except Exception as error:  # noqa: BLE001 -- Report this PDF's failure and inspect the remaining papers.
+            results.append(
+                {
+                    "paper": pdf_path.name,
+                    "document_type": "",
+                    "sections": 0,
+                    "chunks": 0,
+                    "score": "",
+                    "issue_count": 1,
+                    "issues": str(error),
+                    "status": "error",
+                }
+            )
 
             print(f"ERROR processing {pdf_path.name}: {error}")
 
@@ -368,28 +336,17 @@ def inspect_all_papers() -> None:
     results.sort(
         key=lambda row: (
             row["status"] != "success",
-            (
-                row["score"]
-                if row["status"] == "success"
-                else float("inf")
-            ),
+            (row["score"] if row["status"] == "success" else float("inf")),
         )
     )
 
     print("\n========== ALL PAPER SCORES ==========")
 
-    print(
-        f"{'Paper':55} {'Sections':>8} "
-        f"{'Chunks':>8} {'Score':>8} {'Issues':>8}"
-    )
+    print(f"{'Paper':55} {'Sections':>8} {'Chunks':>8} {'Score':>8} {'Issues':>8}")
     print("-" * 95)
 
     for row in results:
-        score = (
-            f"{row['score']:.1f}"
-            if row["status"] == "success"
-            else "ERROR"
-        )
+        score = f"{row['score']:.1f}" if row["status"] == "success" else "ERROR"
 
         print(
             f"{row['paper'][:55]:55} "
@@ -433,11 +390,7 @@ def inspect_all_papers() -> None:
         writer.writeheader()
         writer.writerows(results)
 
-    successful = [
-        row
-        for row in results
-        if row["status"] == "success"
-    ]
+    successful = [row for row in results if row["status"] == "success"]
 
     print(f"\nPapers processed: {len(results)}")
     print(f"Successfully scored: {len(successful)}")

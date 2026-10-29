@@ -1,15 +1,28 @@
-"""Offline evidence coverage and latency metrics; labels never enter the agent."""
+"""Measure evidence retrieval coverage and response times for offline evaluation.
+
+Reviewed quotes identify facts an answer needs, while stage traces show whether
+retrieval found them and the final context retained them. These labels are used
+after answering and never steer search. Missing labels produce unknown scores, not
+zero.
+"""
 
 import json
 import math
 from collections import defaultdict
 from pathlib import Path
 
-from .grounding import normalized
+from .grounding import normalize_evidence_text
 
 
-def load_relevance(path: Path | None, case_ids: set[str]) -> dict[str, list[dict]]:
-    """Read reviewed evidence spans grouped by question; alternatives share a requirement ID."""
+def load_evidence_labels(
+    path: Path | None, case_ids: set[str]
+) -> dict[str, list[dict]]:
+    """Load reviewed paper/quote requirements and group them by benchmark question ID.
+
+    Validate that questions exist and each quote is usable. Several labels can share
+    one requirement ID to represent alternative passages supporting the same
+    required fact.
+    """
     if path is None:
         return {}
     rows = json.loads(path.read_text(encoding="utf-8-sig"))
@@ -26,7 +39,7 @@ def load_relevance(path: Path | None, case_ids: set[str]) -> dict[str, list[dict
             )
         if row["question_id"] not in case_ids:
             raise ValueError("Relevance label references an unknown question ID")
-        if len(normalized(row["quote"])) < 8:
+        if len(normalize_evidence_text(row["quote"])) < 8:
             raise ValueError(
                 "Reviewed evidence quotes must contain at least eight characters"
             )
@@ -34,8 +47,13 @@ def load_relevance(path: Path | None, case_ids: set[str]) -> dict[str, list[dict
     return dict(grouped)
 
 
-def evidence_coverage(labels: list[dict], passages: list[dict]) -> dict:
-    """Measure reviewed evidence requirements found, rather than merely correct paper titles."""
+def measure_evidence_coverage(labels: list[dict], passages: list[dict]) -> dict:
+    """Measure how many reviewed evidence requirements occur in supplied passages.
+
+    Match an exact indexed paper title and a normalized supporting quote.
+    Alternative quotes with the same requirement ID count once. This measures
+    evidence presence, not whether the generated answer uses it correctly.
+    """
     if not labels:
         return {"coverage": None, "all_covered": None, "missing_requirements": []}
     requirements = {row["requirement_id"] for row in labels}
@@ -45,7 +63,8 @@ def evidence_coverage(labels: list[dict], passages: list[dict]) -> dict:
         for label in labels
         if any(
             row.get("title") == label["paper"]
-            and normalized(label["quote"]) in normalized(row.get("content", ""))
+            and normalize_evidence_text(label["quote"])
+            in normalize_evidence_text(row.get("content", ""))
             for row in passages
         )
     }
@@ -56,17 +75,24 @@ def evidence_coverage(labels: list[dict], passages: list[dict]) -> dict:
     }
 
 
-def coverage_metrics(labels: list[dict], result: dict) -> dict:
-    """Score the candidate pool and actual budgeted context separately using private labels."""
+def measure_retrieval_coverage(labels: list[dict], result: dict) -> dict:
+    """Compare evidence coverage before reranking and in the final answer context.
+
+    Use candidate traces and returned context to locate where needed evidence was
+    lost. Leave candidate recall unknown when the run did not capture candidate
+    passages.
+    """
     runs = result.get("retrieval_trace", {}).get("tasks", [])
     audited = bool(runs) and all("candidate_passages" in run["trace"] for run in runs)
     candidates = [
         row for run in runs for row in run["trace"].get("candidate_passages", [])
     ]
     candidate = (
-        evidence_coverage(labels, candidates) if audited else evidence_coverage([], [])
+        measure_evidence_coverage(labels, candidates)
+        if audited
+        else measure_evidence_coverage([], [])
     )
-    final = evidence_coverage(labels, result.get("context", []))
+    final = measure_evidence_coverage(labels, result.get("context", []))
     return {
         "candidate_evidence_recall": candidate["coverage"],
         "final_evidence_coverage": final["coverage"],
@@ -75,8 +101,85 @@ def coverage_metrics(labels: list[dict], result: dict) -> dict:
     }
 
 
-def percentile(values: list[float], fraction: float) -> float | None:
-    """Interpolate a quantile of sorted observations; empty samples stay unknown."""
+def load_ranking_labels(path: Path | None, case_ids: set[str]) -> dict[str, list[dict]]:
+    """Read private chunk relevance judgments, including optional grades from 0 to 3.
+
+    Labels use original child IDs from the audited index, not response-local S1
+    labels. Rebuilds may change these IDs, so judgments must match the evaluated index.
+    """
+    if path is None:
+        return {}
+    rows = json.loads(path.read_text(encoding="utf-8-sig"))
+    if not isinstance(rows, list):
+        raise TypeError("Ranking labels must be a JSON list")
+    grouped, seen = defaultdict(list), set()
+    for row in rows:
+        if not isinstance(row, dict) or row.get("question_id") not in case_ids:
+            raise ValueError("Ranking label needs a known question_id")
+        if not isinstance(row.get("chunk_id"), str) or not row["chunk_id"].strip():
+            raise ValueError("Ranking label needs an original chunk_id")
+        grade = row.get("relevance", 1)
+        if type(grade) is not int or not 0 <= grade <= 3:
+            raise ValueError("Ranking relevance must be an integer from 0 to 3")
+        key = (row["question_id"], row["chunk_id"])
+        if key in seen:
+            raise ValueError("Duplicate ranking judgment")
+        seen.add(key)
+        grouped[row["question_id"]].append({**row, "relevance": grade})
+    return dict(grouped)
+
+
+def measure_ranking_quality(labels: list[dict], result: dict) -> dict:
+    """Score the ranked child results at K=5/10 using reviewed relevance judgments.
+
+    One task uses MiniLM's effective order. Multiple tasks interleave their ranked
+    lists round-robin, removing duplicate IDs; scores from different queries are
+    not compared. This is before parent expansion and context budgeting. Missing
+    labels/audits or no judged positives remain unscored. Unjudged chunks count as
+    nonrelevant, so incomplete judgments can underestimate ranking quality.
+    """
+    runs = result.get("retrieval_trace", {}).get("tasks", [])
+    audited = bool(runs) and all("reranked_passages" in run["trace"] for run in runs)
+    grades = {row["chunk_id"]: row.get("relevance", 1) for row in labels}
+    relevant = {key for key, grade in grades.items() if grade > 0}
+    groups = [run["trace"].get("reranked_passages", []) for run in runs]
+    ranked, seen = [], set()
+    for position in range(max((len(group) for group in groups), default=0)):
+        for group in groups:
+            if position < len(group) and group[position]["id"] not in seen:
+                key = group[position]["id"]
+                seen.add(key)
+                ranked.append(key)
+    scores = {}
+    for k in (5, 10):
+        values = [None, None, None]
+        if audited and relevant:
+            top = ranked[:k]
+            recall = len(set(top) & relevant) / len(relevant)
+            reciprocal = next(
+                (1 / i for i, key in enumerate(top, 1) if key in relevant), 0.0
+            )
+            # Discount lower ranks and give higher relevance grades more gain.
+            dcg = sum(
+                (2 ** grades.get(key, 0) - 1) / math.log2(i + 1)
+                for i, key in enumerate(top, 1)
+            )
+            ideal = sum(
+                (2**grade - 1) / math.log2(i + 1)
+                for i, grade in enumerate(sorted(grades.values(), reverse=True)[:k], 1)
+            )
+            values = [recall, reciprocal, dcg / ideal]
+        for metric, value in zip(("recall", "mrr", "ndcg"), values):
+            scores[f"reranked_{metric}_at_{k}"] = value
+    return scores
+
+
+def calculate_percentile(values: list[float], fraction: float) -> float | None:
+    """Estimate a requested percentile from already sorted timing samples.
+
+    Interpolate between neighboring observations and return None for an empty sample
+    so missing measurements stay visible.
+    """
     if not values:
         return None
     position = (len(values) - 1) * fraction
@@ -84,26 +187,26 @@ def percentile(values: list[float], fraction: float) -> float | None:
     return round(values[low] + (values[high] - values[low]) * (position - low), 4)
 
 
-def latency_summary(rows: list[dict]) -> dict:
-    """Report interpolated P50/P95 and sample counts, keeping failures visible."""
+def summarize_latency(rows: list[dict]) -> dict:
+    """Report P50/P95 response and stage times together with sample counts.
+
+    P50 describes the middle measurement; P95 describes the slower end. Include
+    available failed-case total times and do not invent missing stage measurements.
+    """
     result = {}
     for stage in ("total", "planning", "retrieval", "generation", "verification"):
-        values = sorted(
-            row.get("seconds")
-            if stage == "total"
-            else row.get("result", {}).get("timings", {}).get(stage)
-            for row in rows
-            if isinstance(
-                row.get("seconds")
-                if stage == "total"
-                else row.get("result", {}).get("timings", {}).get(stage),
-                (int, float),
-            )
-        )
-
+        values = []
+        for row in rows:
+            if stage == "total":
+                seconds = row.get("seconds")
+            else:
+                seconds = row.get("result", {}).get("timings", {}).get(stage)
+            if isinstance(seconds, (int, float)):
+                values.append(seconds)
+        values.sort()
         result[stage] = {
             "samples": len(values),
-            "p50_seconds": percentile(values, 0.5),
-            "p95_seconds": percentile(values, 0.95),
+            "p50_seconds": calculate_percentile(values, 0.5),
+            "p95_seconds": calculate_percentile(values, 0.95),
         }
     return result

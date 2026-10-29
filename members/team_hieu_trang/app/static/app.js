@@ -1,18 +1,21 @@
-// Small DOM helpers and explicit event handlers keep the client framework-free.
-const $ = id => document.getElementById(id);
+// Browser entry point: restore chat/status, then send user actions to FastAPI.
+// Chat and plan history are saved by the server; sessionStorage keeps only the active chat ID.
+// This file renders answers, source links and quizzes; retrieval and grading run in Python.
+const getElementById = id => document.getElementById(id);
 let sessionId = null, busy = false;
 let pendingPlanId = null, revisePlanId = null;
 
 // Build elements with textContent so documents and model output cannot inject HTML.
-function element(tag, text, className) {
+function createElement(tag, text, className) {
   const node = document.createElement(tag);
   if (text !== undefined) node.textContent = text;
   if (className) node.className = className;
   return node;
 }
 
-// Call the shared API and expose only its readable error message.
-async function api(path, body, method = body === undefined ? "GET" : "POST") {
+// Send JSON to a FastAPI route and return its parsed response.
+// Convert failed HTTP responses into readable errors for runUiAction() to display.
+async function requestApi(path, body, method = body === undefined ? "GET" : "POST") {
   const response = await fetch(path, {
     method,
     headers: {"Content-Type": "application/json"},
@@ -25,8 +28,9 @@ async function api(path, body, method = body === undefined ? "GET" : "POST") {
   return data;
 }
 
-// Serialize user actions and always restore controls, including after a failed request.
-async function run(task, errorTarget = $("status"), loading = "Working…") {
+// Run one browser action at a time, show elapsed waiting time and restore controls.
+// This keeps repeated clicks from sending duplicate requests while a local model is busy.
+async function runUiAction(task, errorTarget = getElementById("status"), loading = "Working…") {
   if (busy) return;
   busy = true;
   const started = Date.now();
@@ -59,22 +63,23 @@ async function run(task, errorTarget = $("status"), loading = "Working…") {
   }
 }
 
-// Render a deliberately small Markdown subset without evaluating raw HTML.
-function markdown(target, text) {
+// Render answer paragraphs, headings, code and bold text using DOM text nodes.
+// Model/document text is never inserted as raw HTML, so it cannot create page scripts.
+function renderMarkdown(target, text) {
   const blocks = text.split(/(```[\s\S]*?```)/g);
   for (const block of blocks) {
     if (block.startsWith("```")) {
-      const pre = element("pre");
-      pre.append(element("code", block.replace(/^```[^\n]*\n?/, "").replace(/```$/, "")));
+      const pre = createElement("pre");
+      pre.append(createElement("code", block.replace(/^```[^\n]*\n?/, "").replace(/```$/, "")));
       target.append(pre);
     } else {
       for (const paragraph of block.split(/\n\s*\n/).filter(Boolean)) {
-        if (/^#{1,3} /.test(paragraph)) target.append(element("h3", paragraph.replace(/^#{1,3} /, "")));
+        if (/^#{1,3} /.test(paragraph)) target.append(createElement("h3", paragraph.replace(/^#{1,3} /, "")));
         else {
-          const p = element("p");
+          const p = createElement("p");
           paragraph.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).forEach(part => {
-            if (part.startsWith("**")) p.append(element("strong", part.slice(2, -2)));
-            else if (part.startsWith("`")) p.append(element("code", part.slice(1, -1)));
+            if (part.startsWith("**")) p.append(createElement("strong", part.slice(2, -2)));
+            else if (part.startsWith("`")) p.append(createElement("code", part.slice(1, -1)));
             else p.append(document.createTextNode(part));
           });
           target.append(p);
@@ -84,15 +89,16 @@ function markdown(target, text) {
   }
 }
 
-// Allow only HTTPS citations; source text never controls HTML attributes directly.
-function sources(target, rows = []) {
-  const group = element("div", undefined, "sources");
+// Show the source labels and links returned with an answer or graded quiz.
+// Validate HTTPS links before creating anchors; display names stay plain text.
+function renderSourceLinks(target, rows = []) {
+  const group = createElement("div", undefined, "sources");
   for (const [index, row] of rows.entries()) {
     try {
       const url = new URL(row.source_url || row.url);
       if (url.protocol !== "https:") continue;
       const label = /^S\d+$/.test(row.id || "") ? row.id : index + 1;
-      const link = element("a", `${label}  ${row.title} · ${row.location || ""}`, "source");
+      const link = createElement("a", `${label}  ${row.title} · ${row.location || ""}`, "source");
       link.href = url.href;
       link.target = "_blank";
       link.rel = "noopener noreferrer";
@@ -103,11 +109,11 @@ function sources(target, rows = []) {
 }
 
 // Download a portable note with the answer and its original source links.
-function exportMarkdown(text, refs) {
+function downloadAnswerMarkdown(text, refs) {
   const citations = refs.map((row, index) => `${row.id || index + 1}. ${row.title} — ${row.location || ""}\n   ${row.source_url || row.url || ""}`).join("\n");
   const blob = new Blob([text + "\n\n## Sources\n\n" + citations], {type: "text/markdown;charset=utf-8"});
   const url = URL.createObjectURL(blob);
-  const link = element("a");
+  const link = createElement("a");
   link.href = url;
   link.download = "team-knowledge-note.md";
   link.click();
@@ -115,157 +121,162 @@ function exportMarkdown(text, refs) {
 }
 
 // Append a real chat message and retain source links when reopening saved conversations.
-function addMessage(role, text, refs = [], quiz = null, plan = null) {
-  $("welcome").hidden = true;
-  const box = element("article", undefined, "message " + role);
+function appendChatMessage(role, text, refs = [], quiz = null, plan = null) {
+  getElementById("welcome").hidden = true;
+  const box = createElement("article", undefined, "message " + role);
   // Display short citation numbers instead of internal chunk IDs.
   let displayText = text;
   refs.forEach((row, index) => {
     displayText = displayText.split("[" + row.id + "]").join("[" + (index + 1) + "]");
   });
-  markdown(box, displayText);
+  renderMarkdown(box, displayText);
   if (role === "assistant") {
-    sources(box, refs);
-    const save = element("button", "Save as Markdown", "subtle");
-    save.onclick = () => exportMarkdown(displayText, refs);
+    renderSourceLinks(box, refs);
+    const save = createElement("button", "Save as Markdown", "subtle");
+    save.onclick = () => downloadAnswerMarkdown(displayText, refs);
     box.append(save);
     if (quiz) {
-      const open = element("button", "Open quiz", "subtle");
-      open.onclick = () => renderQuiz(quiz);
+      const open = createElement("button", "Open quiz", "subtle");
+      open.onclick = () => renderQuizQuestions(quiz);
       box.append(open);
     }
     if (plan) {
-      const approve = element("button", "Approve plan", "primary");
-      const revise = element("button", "Revise plan", "subtle");
+      const approve = createElement("button", "Approve plan", "primary");
+      const revise = createElement("button", "Revise plan", "subtle");
       for (const button of [approve, revise]) {
         button.dataset.planId = plan.plan_id;
         button.disabled = plan.plan_id !== pendingPlanId;
       }
-      approve.onclick = () => run(async () => {
-        showChatResult(await api("/api/chat", {session_id: sessionId, action: "approve", plan_id: plan.plan_id}));
-        await refreshHistory();
-      }, $("status"), "Running approved plan…");
+      approve.onclick = () => runUiAction(async () => {
+        displayChatResponse(await requestApi("/api/chat", {session_id: sessionId, action: "approve", plan_id: plan.plan_id}));
+        await refreshChatHistory();
+      }, getElementById("status"), "Running approved plan…");
       revise.onclick = () => {
         revisePlanId = plan.plan_id;
-        $("message").placeholder = "Describe what to add, remove, or change in this plan…";
-        $("message").focus();
+        getElementById("message").placeholder = "Describe what to add, remove, or change in this plan…";
+        getElementById("message").focus();
       };
       box.append(approve, revise);
     }
   }
-  $("messages").append(box);
-  $("conversation").scrollTop = $("conversation").scrollHeight;
+  getElementById("messages").append(box);
+  getElementById("conversation").scrollTop = getElementById("conversation").scrollHeight;
   return box;
 }
 
-// Refresh chat history from the server instead of keeping another copy in browser storage.
-async function refreshHistory() {
-  const chats = await api("/api/sessions");
-  $("history").replaceChildren();
+// Fetch saved conversation IDs/titles and rebuild the sidebar open/delete controls.
+// The server remains the source of truth for chat history.
+async function refreshChatHistory() {
+  const chats = await requestApi("/api/sessions");
+  getElementById("history").replaceChildren();
   for (const chat of chats.reverse()) {
-    const row = element("div", undefined, "history-item");
-    const open = element("button", chat.title, "chat-link" + (chat.session_id === sessionId ? " active" : ""));
-    open.onclick = () => run(() => openChat(chat));
-    const remove = element("button", "×", "delete-chat");
+    const row = createElement("div", undefined, "history-item");
+    const open = createElement("button", chat.title, "chat-link" + (chat.session_id === sessionId ? " active" : ""));
+    open.onclick = () => runUiAction(() => restoreChatConversation(chat));
+    const remove = createElement("button", "×", "delete-chat");
     remove.title = `Delete ${chat.title}`;
     remove.setAttribute("aria-label", `Delete ${chat.title}`);
-    remove.onclick = () => deleteChat(chat);
+    remove.onclick = () => deleteChatConversation(chat);
     row.append(open, remove);
-    $("history").append(row);
+    getElementById("history").append(row);
   }
 }
 
 // Delete only the selected conversation after a deliberate confirmation.
-async function deleteChat(chat) {
+async function deleteChatConversation(chat) {
   if (!confirm(`Delete "${chat.title}"?`)) return;
-  await run(async () => {
-    await api("/api/sessions/" + encodeURIComponent(chat.session_id), undefined, "DELETE");
-    if (chat.session_id === sessionId) startNewChat();
-    await refreshHistory();
-  }, $("status"), "Deleting chat…");
+  await runUiAction(async () => {
+    await requestApi("/api/sessions/" + encodeURIComponent(chat.session_id), undefined, "DELETE");
+    if (chat.session_id === sessionId) clearChatForNewConversation();
+    await refreshChatHistory();
+  }, getElementById("status"), "Deleting chat…");
 }
 
-// Reopen a shared conversation with its saved citations and quizzes.
-async function openChat(chat) {
-  const result = await api("/api/sessions/" + encodeURIComponent(chat.session_id));
+// Load a saved conversation, render its messages and restore the current pending plan ID.
+// Only approval controls for that proposal remain active after reopening the chat.
+async function restoreChatConversation(chat) {
+  const result = await requestApi("/api/sessions/" + encodeURIComponent(chat.session_id));
   sessionId = result.session_id;
   pendingPlanId = result.pending_plan_id || null;
   revisePlanId = null;
   sessionStorage.setItem("activeChatId", sessionId);
-  $("messages").replaceChildren();
-  $("chat-title").textContent = chat.title;
+  getElementById("messages").replaceChildren();
+  getElementById("chat-title").textContent = chat.title;
   for (const message of result.messages) {
-    addMessage(message.role, message.content, message.sources || [], message.quiz, message.plan);
+    appendChatMessage(message.role, message.content, message.sources || [], message.quiz, message.plan);
   }
   document.body.classList.remove("sidebar-open");
-  await refreshHistory();
+  await refreshChatHistory();
 }
 
-// Start a client-identified chat so refreshes reuse the same conversation.
-function startNewChat(id = crypto.randomUUID()) {
+// Clear the visible conversation and remember its new ID before the first request.
+// A browser refresh can then reopen the same server-side chat while an answer is pending.
+function clearChatForNewConversation(id = crypto.randomUUID()) {
   sessionId = id;
   pendingPlanId = null;
   revisePlanId = null;
   sessionStorage.setItem("activeChatId", sessionId);
-  $("messages").replaceChildren();
-  $("welcome").hidden = false;
-  $("chat-title").textContent = "New conversation";
-  $("status").textContent = "";
+  getElementById("messages").replaceChildren();
+  getElementById("welcome").hidden = false;
+  getElementById("chat-title").textContent = "New conversation";
+  getElementById("status").textContent = "";
   document.body.classList.remove("sidebar-open");
-  $("message").focus();
+  getElementById("message").focus();
 }
 
 // Display readiness as a small footnote; failed status requests do not hide the conversation.
-async function refreshStatus() {
+async function refreshIndexStatus() {
   try {
-    const status = await api("/api/status");
-    $("knowledge-status").textContent = status.ready ? "● Knowledge ready" : "No documents indexed";
-    $("sync-status").textContent = status.synced_at ? "Synced " + new Date(status.synced_at).toLocaleString() : "";
+    const status = await requestApi("/api/status");
+    getElementById("knowledge-status").textContent = status.ready ? "● Knowledge ready" : "No documents indexed";
+    getElementById("sync-status").textContent = status.synced_at ? "Synced " + new Date(status.synced_at).toLocaleString() : "";
   } catch {
-    $("knowledge-status").textContent = "Knowledge status unavailable";
+    getElementById("knowledge-status").textContent = "Knowledge status unavailable";
   }
 }
 
-// Render the server's graded result; never calculate or ship answer keys before submission.
-function renderResult(result, answers) {
-  const root = $("quiz-body");
-  root.replaceChildren(element("h3", `Score: ${result.score} / ${result.total}`));
+// Display the score, correct choices, explanations and sources returned after submission.
+// Python grades the saved answer key; this function only presents the result.
+function renderQuizResult(result, answers) {
+  const root = getElementById("quiz-body");
+  root.replaceChildren(createElement("h3", `Score: ${result.score} / ${result.total}`));
   result.questions.forEach((question, index) => {
-    const section = element("section", undefined, "result");
-    section.append(element("h3", question.question),
-      element("p", "Your answer: " + question.options[answers[index]]),
-      element("p", "Correct answer: " + question.options[question.correct_index]),
-      element("p", question.explanation));
-    sources(section, (result.sources || []).filter(row => question.source_ids.includes(row.id)));
+    const section = createElement("section", undefined, "result");
+    section.append(createElement("h3", question.question),
+      createElement("p", "Your answer: " + question.options[answers[index]]),
+      createElement("p", "Correct answer: " + question.options[question.correct_index]),
+      createElement("p", question.explanation));
+    renderSourceLinks(section, (result.sources || []).filter(row => question.source_ids.includes(row.id)));
     root.append(section);
   });
-  root.append(element("p", result.kind === "daily" ? "Your answer is saved. A new challenge arrives tomorrow." : "Quiz completed."));
-  const another = element("button", "Create another quiz", "subtle");
-  another.onclick = prepareQuiz;
+  root.append(createElement("p", result.kind === "daily" ? "Your answer is saved. A new challenge arrives tomorrow." : "Quiz completed."));
+  const another = createElement("button", "Create another quiz", "subtle");
+  another.onclick = insertQuizCommand;
   root.append(another);
 }
 
-// Open either the shared daily question or a custom quiz using the same modal.
-function renderQuiz(quiz) {
+// Build the quiz form from question text and choices received from the server.
+// Submit selected option indexes to the daily or custom-quiz route for grading.
+function renderQuizQuestions(quiz) {
   const daily = quiz.kind === "daily";
-  $("quiz-title").textContent = daily ? "Daily Challenge" : "Practice quiz";
-  $("quiz-subtitle").textContent = daily ? "One question from your team's knowledge" : "Test what you have learned";
-  $("quiz-error").textContent = "";
-  const dialog = $("quiz-dialog");
+  getElementById("quiz-title").textContent = daily ? "Daily Challenge" : "Practice quiz";
+  getElementById("quiz-subtitle").textContent = daily ? "One question from your team's knowledge" : "Test what you have learned";
+  getElementById("quiz-error").textContent = "";
+  const dialog = getElementById("quiz-dialog");
   if (!dialog.open) dialog.showModal();
   if (quiz.submitted) {
-    renderResult(quiz, quiz.answers);
+    renderQuizResult(quiz, quiz.answers);
     return;
   }
-  const root = $("quiz-body");
-  root.replaceChildren(element("span", quiz.difficulty + " · " + quiz.topic, "badge"));
-  const form = element("form");
+  const root = getElementById("quiz-body");
+  root.replaceChildren(createElement("span", quiz.difficulty + " · " + quiz.topic, "badge"));
+  const form = createElement("form");
   quiz.questions.forEach((question, index) => {
-    const field = element("fieldset");
-    field.append(element("legend", question.question));
+    const field = createElement("fieldset");
+    field.append(createElement("legend", question.question));
     question.options.forEach((option, choice) => {
-      const label = element("label", undefined, "option");
-      const input = element("input");
+      const label = createElement("label", undefined, "option");
+      const input = createElement("input");
       input.type = "radio";
       input.name = "q" + index;
       input.value = choice;
@@ -275,102 +286,106 @@ function renderQuiz(quiz) {
     });
     form.append(field);
   });
-  const actions = element("div", undefined, "quiz-actions");
-  actions.append(element("button", "Check answer", "primary"));
+  const actions = createElement("div", undefined, "quiz-actions");
+  actions.append(createElement("button", "Check answer", "primary"));
   form.append(actions);
   form.onsubmit = event => {
     event.preventDefault();
     const data = new FormData(form);
     const answers = quiz.questions.map((_, index) => Number(data.get("q" + index)));
     const path = daily ? `/api/daily-challenge/${quiz.day}/submit` : `/api/quizzes/${quiz.quiz_id}/submit`;
-    run(async () => {
-      const result = await api(path, {answers});
-      renderResult({...result, kind: quiz.kind}, result.answers || answers);
-    }, $("quiz-error"), "Checking your answer…");
+    runUiAction(async () => {
+      const result = await requestApi(path, {answers});
+      renderQuizResult({...result, kind: quiz.kind}, result.answers || answers);
+    }, getElementById("quiz-error"), "Checking your answer…");
   };
   root.append(form);
 }
 
 // Put the exact supported command in the composer so a new quiz needs no settings page.
-function prepareQuiz() {
-  $("quiz-dialog").close();
-  $("message").value = '/quiz "your topic" medium 5';
-  $("message").focus();
-  $("message").setSelectionRange(7, 17);
+function insertQuizCommand() {
+  getElementById("quiz-dialog").close();
+  getElementById("message").value = '/quiz "your topic" medium 5';
+  getElementById("message").focus();
+  getElementById("message").setSelectionRange(7, 17);
 }
 
-// Keep failed input available for retry and avoid duplicate user bubbles on errors.
-function showChatResult(result) {
+// Update the active conversation and render an answer, proposal or generated quiz.
+// Remember the newest plan ID so older proposal buttons cannot approve a different plan.
+function displayChatResponse(result) {
   sessionId = result.session_id;
   pendingPlanId = result.pending_plan_id || null;
   revisePlanId = null;
   sessionStorage.setItem("activeChatId", sessionId);
-  $("message").placeholder = "Ask about your research papers…";
+  getElementById("message").placeholder = "Ask about your research papers…";
   document.querySelectorAll("button[data-plan-id]").forEach(button => button.disabled = button.dataset.planId !== pendingPlanId);
   if (result.kind === "quiz") {
-    addMessage("assistant", "Quiz created: " + result.topic, [], result);
-    renderQuiz(result);
-  } else addMessage("assistant", result.answer, result.sources, null, result.plan);
+    appendChatMessage("assistant", "Quiz created: " + result.topic, [], result);
+    renderQuizQuestions(result);
+  } else appendChatMessage("assistant", result.answer, result.sources, null, result.plan);
 }
 
 
-async function sendMessage(event) {
+// Send composer text, chat ID and any plan-revision action to /api/chat.
+// Restore failed input for retry; on success display the response and refresh sidebar history.
+async function submitChatMessage(event) {
   event.preventDefault();
-  const message = $("message").value.trim();
+  const message = getElementById("message").value.trim();
   if (!message || busy) return;
-  await run(async () => {
+  await runUiAction(async () => {
     // The ID is already in sessionStorage before the request starts. If the user
     // refreshes while Gemma is working, the browser returns to this same chat.
-    const bubble = addMessage("human", message);
-    $("message").value = "";
+    const bubble = appendChatMessage("human", message);
+    getElementById("message").value = "";
     try {
       const review = revisePlanId ? {action: "revise", plan_id: revisePlanId} : {};
-      const result = await api("/api/chat", {message, session_id: sessionId, ...review});
-      showChatResult(result);
-      if ($("chat-title").textContent === "New conversation") $("chat-title").textContent = message.slice(0, 70);
+      const result = await requestApi("/api/chat", {message, session_id: sessionId, ...review});
+      displayChatResponse(result);
+      if (getElementById("chat-title").textContent === "New conversation") getElementById("chat-title").textContent = message.slice(0, 70);
     } catch (error) {
       bubble.remove();
-      $("message").value = message;
+      getElementById("message").value = message;
       throw error;
     }
-    await refreshHistory();
-  }, $("status"), "Searching your team's knowledge…");
+    await refreshChatHistory();
+  }, getElementById("status"), "Searching your team's knowledge…");
 }
 
 // Bind controls once after the deferred script has loaded the page.
-$("chat-form").onsubmit = sendMessage;
-$("new-chat").onclick = () => startNewChat();
-$("quiz-command").onclick = prepareQuiz;
-$("close-quiz").onclick = () => $("quiz-dialog").close();
-$("toggle-sidebar").onclick = () => document.body.classList.toggle("sidebar-open");
-$("daily-button").onclick = () => {
-  $("quiz-title").textContent = "Daily Challenge";
-  $("quiz-subtitle").textContent = "One question from your team's knowledge";
-  $("quiz-body").replaceChildren();
-  $("quiz-dialog").showModal();
-  run(async () => renderQuiz(await api("/api/daily-challenge")), $("quiz-error"), "Preparing today's challenge…");
+getElementById("chat-form").onsubmit = submitChatMessage;
+getElementById("new-chat").onclick = () => clearChatForNewConversation();
+getElementById("quiz-command").onclick = insertQuizCommand;
+getElementById("close-quiz").onclick = () => getElementById("quiz-dialog").close();
+getElementById("toggle-sidebar").onclick = () => document.body.classList.toggle("sidebar-open");
+getElementById("daily-button").onclick = () => {
+  getElementById("quiz-title").textContent = "Daily Challenge";
+  getElementById("quiz-subtitle").textContent = "One question from your team's knowledge";
+  getElementById("quiz-body").replaceChildren();
+  getElementById("quiz-dialog").showModal();
+  runUiAction(async () => renderQuizQuestions(await requestApi("/api/daily-challenge")), getElementById("quiz-error"), "Preparing today's challenge…");
 };
-$("message").onkeydown = event => {
+getElementById("message").onkeydown = event => {
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
-    if (!busy) $("chat-form").requestSubmit();
+    if (!busy) getElementById("chat-form").requestSubmit();
   }
 };
 
-// Restore the active conversation after refresh, or prepare one stable new ID.
-async function initialize() {
+// On page load, restore the active chat if available and fetch history/index status.
+// If the saved chat no longer exists, prepare a new conversation instead.
+async function restoreChatAndLoadStatus() {
   const savedId = sessionStorage.getItem("activeChatId");
   if (savedId) {
     try {
-      await openChat({session_id: savedId, title: "Conversation"});
+      await restoreChatConversation({session_id: savedId, title: "Conversation"});
     } catch {
-      startNewChat(savedId);
+      clearChatForNewConversation(savedId);
     }
   } else {
-    startNewChat();
+    clearChatForNewConversation();
   }
-  await refreshHistory();
-  await refreshStatus();
+  await refreshChatHistory();
+  await refreshIndexStatus();
 }
 
-initialize().catch(error => $("status").textContent = error.message);
+restoreChatAndLoadStatus().catch(error => getElementById("status").textContent = error.message);
