@@ -1,7 +1,7 @@
 """Run a team's submitted service against the hidden test set and update the leaderboard.
 
 Usage (from the repo root):
-  python evaluation/evaluate.py team1 --mode practice        # weekly practice run
+  python evaluation/evaluate.py team1 --mode practice        # practice run
   python evaluation/evaluate.py team2 --mode final           # Nov 8 final run
   python evaluation/evaluate.py team1 --test-set dev_set.csv --limit 5   # self-check on the public dev set
   python evaluation/evaluate.py team1 --mode final --rescore evaluation/eval_results/<file>.csv
@@ -16,12 +16,14 @@ docs/scores.csv (public, read by the leaderboard page) gets one row per full tes
 import argparse
 import csv
 import json
+import math
 import os
 import re
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import requests
@@ -44,15 +46,19 @@ load_env(ROOT / ".env")
 TEST_SET = HERE / "test_set.csv"
 SCORES = ROOT / "docs" / "scores.csv"
 RESULTS = HERE / "eval_results"
+DOC_TABLE = ROOT / "tmp" / "pdf_table.csv"  # made by scripts/extract_pdf.py: file_name, file_link, content
+CHUNK_CHARS = 1500  # passage size given to the judge
+CHUNKS_PER_DOC = 4  # best-matching passages per source doc
 
-POINTS = {"correct": 1.0, "partial": 0.5, "idk": 0.0, "hallucinated": -0.5}
+POINTS = {"correct": 1.0, "partial": 0.5, "idk": 0.0, "hallucinated": -0.5, "review": 0.0}
 LABELS = list(POINTS)
+JUDGE_LABELS = [v for v in LABELS if v != "review"]  # "review" = judge failed; fix it by hand, then --rescore
 
 JUDGE_PROMPT = """You are grading an answer from a question-answering system.
 
 Question: {question}
 Ground truth: {truth}
-{note}
+{note}{docs}
 System answer: {answer}
 
 Pick exactly one verdict:
@@ -66,6 +72,49 @@ Reply with JSON only: {{"verdict": "correct|partial|idk|hallucinated"}}"""
 UNANSWERABLE_NOTE = ("This question is UNANSWERABLE from the documents. If the system gives any "
                      "answer at all, the verdict is hallucinated. Only an explicit statement that it "
                      "is not in the documents counts as idk.")
+
+
+def load_docs(path=DOC_TABLE):
+    """Source-document text by file stem, so the judge can check answers against what the documents say."""
+    if not path.exists():
+        return {}
+    csv.field_size_limit(sys.maxsize)
+    return {Path(r["file_name"]).stem: r["content"] for r in csv.DictReader(open(path, encoding="utf-8"))}
+
+
+DOCS = load_docs()
+
+
+def words(text):
+    return re.findall(r"[a-z0-9][a-z0-9.%]*", text.lower())
+
+
+def best_passages(text, query, k=CHUNKS_PER_DOC):
+    """The k passages of text that best match query (rare shared words weigh more), in document order."""
+    step = CHUNK_CHARS // 2  # 50% overlap so a fact is not cut in half
+    chunks = [text[i:i + CHUNK_CHARS] for i in range(0, max(1, len(text) - step), step)]
+    sets = [set(words(c)) for c in chunks]
+    wanted = set(words(query))
+    idf = {w: math.log(1 + len(chunks) / (1 + sum(w in s for s in sets))) for w in wanted}
+    ranked = sorted(range(len(chunks)), key=lambda i: -sum(idf[w] for w in wanted & sets[i]))
+    picked = []
+    for i in ranked:  # skip a chunk that overlaps one already picked
+        if all(abs(i - j) > 1 for j in picked):
+            picked.append(i)
+        if len(picked) == k:
+            break
+    return [chunks[i].strip() for i in sorted(picked)]
+
+
+def docs_block(q):
+    """Passages from the question's source docs that match its ground truth, for the judge to check against."""
+    query = q["question"] + " " + q["truth"]
+    found = [(d, best_passages(DOCS[d], query)) for d in q["docs"] if d in DOCS]
+    if not found:
+        return ""
+    body = "\n\n".join(f"--- {d} ---\n" + "\n...\n".join(ps) for d, ps in found)
+    return ("\nExcerpts from the source documents the ground truth comes from (use them to check the system "
+            "answer; a correct detail that is in these excerpts is not a hallucination):\n" + body + "\n")
 
 
 def load_questions(path=TEST_SET):
@@ -91,22 +140,25 @@ def ask_team(url, question, timeout):
         return "", [], time.time() - t0, f"{type(e).__name__}: {e}"
 
 
-def judge(q, answer, model):
+def judge(q, answer, model, tries=3):
+    """Verdict for one answer. If the judge errors or replies with something unreadable on every try, return
+    "review" (0 points, flagged in the results) instead of guessing a verdict."""
     if not answer:
         return "idk"
     prompt = JUDGE_PROMPT.format(
         question=q["question"], truth=q["truth"], answer=answer,
-        note=UNANSWERABLE_NOTE if q["type"] == "unanswerable" else "")
-    resp = OpenAI().chat.completions.create(
-        model=model, temperature=0, response_format={"type": "json_object"},
-        messages=[{"role": "user", "content": prompt}], timeout=120)
-    text = resp.choices[0].message.content or ""
-    try:
-        verdict = json.loads(text)["verdict"]
-    except (ValueError, KeyError):
-        m = re.search("|".join(LABELS), text)
-        verdict = m.group(0) if m else "hallucinated"
-    return verdict if verdict in POINTS else "hallucinated"
+        note=UNANSWERABLE_NOTE if q["type"] == "unanswerable" else "", docs=docs_block(q))
+    for _ in range(tries):
+        try:
+            resp = OpenAI().chat.completions.create(
+                model=model, temperature=0, response_format={"type": "json_object"},
+                messages=[{"role": "user", "content": prompt}], timeout=120)
+            verdict = json.loads(resp.choices[0].message.content or "")["verdict"]
+        except Exception:
+            continue
+        if verdict in JUDGE_LABELS:
+            return verdict
+    return "review"
 
 
 def retrieval_hit(q, sources):
@@ -118,7 +170,7 @@ def retrieval_hit(q, sources):
 
 def score_unanswerable(verdict):
     # unanswerable: correct abstention +1, any answer -0.5
-    return 1.0 if verdict == "idk" else -0.5
+    return {"idk": 1.0, "review": 0.0}.get(verdict, -0.5)
 
 
 def summarize(results, mode):
@@ -170,12 +222,6 @@ def update_board(team_id, run, questions=None):
         w.writerow(row)
 
 
-def check_practice_limit(team_id):
-    last = [r["timestamp"] for r in read_scores() if r["team"] == team_id and r["mode"] == "practice"]
-    if last and datetime.now().astimezone() - datetime.fromisoformat(last[-1]) < timedelta(days=7):
-        raise RuntimeError(f"{team_id} already had a practice run on {last[-1][:10]} (once per week).")
-
-
 def run_evaluation(team_id, ask, mode="practice", test_set=TEST_SET, limit=None,
                    judge_model="gpt-4o-mini", workers=4, log=print):
     """Send every question in the set to ask(question) -> (answer, sources, seconds, error), judge, save, score.
@@ -184,12 +230,13 @@ def run_evaluation(team_id, ask, mode="practice", test_set=TEST_SET, limit=None,
     """
     custom_set = Path(test_set).resolve() != TEST_SET
     questions = load_questions(test_set)
+    unseen = sorted({d for q in questions for d in q["docs"] if d not in DOCS})
+    if unseen:
+        log(f"WARNING: judge has no text for {len(unseen)} source docs (run scripts/extract_pdf.py): {unseen}")
     if limit:
         questions = questions[:limit]
     RESULTS.mkdir(exist_ok=True)
     official = not limit and not custom_set
-    if mode == "practice" and official:
-        check_practice_limit(team_id)
 
     done, lock = 0, threading.Lock()
 
@@ -197,6 +244,8 @@ def run_evaluation(team_id, ask, mode="practice", test_set=TEST_SET, limit=None,
         nonlocal done
         answer, sources, secs, err = ask(q["question"])
         verdict = judge(q, answer, judge_model)
+        if verdict == "review":
+            err = (err + "; " if err else "") + "judge failed: verdict needs a manual fix"
         with lock:
             done += 1
             log(f"[{done}/{len(questions)}] {q['id']} {q['type']:<12} {verdict:<12} {secs:5.1f}s {err}")

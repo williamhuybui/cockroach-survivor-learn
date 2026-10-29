@@ -9,7 +9,7 @@
 ```
 uvicorn api_view:app --port 8000                    # gateway, from the repo root
 # put OPENAI_API_KEY=... in the repo-root .env (gitignored)
-python evaluation/evaluate.py team1 --mode practice                    # hidden test set, once per week
+python evaluation/evaluate.py team1 --mode practice                    # hidden test set
 python evaluation/evaluate.py team2 --test-set dev_set.csv --limit 5   # public dev set, board not touched
 ```
 
