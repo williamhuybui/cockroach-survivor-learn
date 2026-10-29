@@ -1,4 +1,9 @@
-"""Validate quiz requests, generated questions, commands, and submitted answers."""
+"""Define and validate the quiz data shared by generation, API routes and grading.
+
+Pydantic checks request and model-output shapes. Helpers parse /quiz commands, hide
+answer keys until submission, validate citations and grade option indexes against
+saved correct answers.
+"""
 
 import shlex
 from typing import Literal
@@ -6,6 +11,8 @@ from typing import Literal
 from pydantic import BaseModel, Field, StrictInt, model_validator
 
 
+# A parsed /quiz command becomes this validated topic, difficulty and count.
+# Generation uses these settings after retrieving research-paper evidence.
 class QuizRequest(BaseModel):
     """A requested topic, difficulty, and at most ten questions."""
 
@@ -14,12 +21,16 @@ class QuizRequest(BaseModel):
     count: int = Field(default=5, ge=1, le=10, strict=True)
 
 
+# Browser quiz submissions contain one option index per question.
+# Index 0 means the first choice; the saved server-side key determines the score.
 class SubmitRequest(BaseModel):
     """Zero-based option indices selected by the user."""
 
     answers: list[StrictInt] = Field(min_length=1, max_length=10)
 
 
+# Gemma must return question text, four choices, a correct index and citations.
+# The full record is saved on the server; answer fields are hidden before submission.
 class Question(BaseModel):
     """One multiple-choice question with a server-side answer key."""
 
@@ -30,8 +41,12 @@ class Question(BaseModel):
     source_ids: list[str] = Field(min_length=1)
 
     @model_validator(mode="after")
-    def distinct_options(self):
-        """Reject blank or duplicate choices before storing a question."""
+    def validate_distinct_options(self):
+        """Reject blank or repeated answer choices after Pydantic checks their count.
+
+        Compare trimmed, case-insensitive text so four differently formatted copies
+        are not accepted as distinct options.
+        """
         if len({x.strip().casefold() for x in self.options}) != 4 or any(
             not x.strip() for x in self.options
         ):
@@ -39,21 +54,30 @@ class Question(BaseModel):
         return self
 
 
+# Group generated questions under one schema for structured model output.
+# Further generation checks enforce the requested count and valid source labels.
 class QuizContent(BaseModel):
     """A structured batch of questions returned by Gemma 3."""
 
     questions: list[Question] = Field(min_length=1, max_length=10)
 
 
-def validate_source_ids(ids, evidence):
-    """Reject citations that were not present in the retrieved evidence."""
+def validate_quiz_citations(ids, evidence):
+    """Check that every generated source label belongs to the supplied quiz evidence.
+
+    Reject missing or invented labels before the generated question is saved.
+    """
     allowed = {e["id"] for e in evidence}
     if not ids or not set(ids).issubset(allowed):
         raise ValueError("Model returned a citation outside the retrieved evidence")
 
 
 def parse_quiz_command(message):
-    """Parse a topic, difficulty, and question count from an explicit quiz command."""
+    """Turn /quiz "topic" difficulty count into a validated QuizRequest.
+
+    Use shell-style splitting to preserve quoted topics, then let the request model
+    check allowed difficulty and question count.
+    """
     parts = shlex.split(message)
     if len(parts) < 4 or parts[0] != "/quiz":
         raise ValueError('Use /quiz "topic" easy|medium|hard 1-10')
@@ -62,8 +86,12 @@ def parse_quiz_command(message):
     )
 
 
-def public_quiz(payload):
-    """Strip answers, explanations, and sources until the member submits."""
+def hide_quiz_answer_key(payload):
+    """Build the pre-submission quiz response from the saved full quiz.
+
+    Expose question text and choices while keeping correct answers, explanations and
+    citation details server-side until grading.
+    """
     return {
         "topic": payload["topic"],
         "difficulty": payload["difficulty"],
@@ -75,7 +103,11 @@ def public_quiz(payload):
 
 
 def grade_quiz(questions, answers):
-    """Validate one answer per question and count correct choices without a model."""
+    """Validate one selected option per question and return the number correct.
+
+    Choices are integer indexes 0 through 3. Compare with the stored answer key
+    rather than asking a model to judge the submission.
+    """
     if len(questions) != len(answers) or any(
         type(a) is not int or a < 0 or a > 3 for a in answers
     ):

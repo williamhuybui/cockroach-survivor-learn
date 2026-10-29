@@ -1,4 +1,8 @@
-"""Any dataset can be evaluated; labels must never influence generation."""
+"""Test dataset loading, private scoring and checkpoint/resume rules.
+
+Keep expected labels outside agent calls and ensure interrupted runs do not mix
+incompatible results.
+"""
 
 import json
 
@@ -18,9 +22,9 @@ def test_generic_dataset_does_not_leak_ground_truth(tmp_path, monkeypatch):
         seen.append((question, history))
         return {"answer": "Cannot verify", "status": "abstained", "context": []}
 
-    monkeypatch.setattr(evaluate, "answer_with_context", answer)
+    monkeypatch.setattr(evaluate, "answer_research_question", answer)
     output = tmp_path / "report.json"
-    report = evaluate.evaluate(dataset, output)
+    report = evaluate.run_evaluation(dataset, output)
     assert seen == [("What?", []), ("Missing?", [])]
     assert report["results"][0]["metrics"]["source_recall"] == 0
     assert report["results"][1]["metrics"]["source_recall"] is None
@@ -37,8 +41,8 @@ def test_errors_are_saved_and_next_case_runs(tmp_path, monkeypatch):
             raise RuntimeError("offline")
         return {"answer": "ok", "context": []}
 
-    monkeypatch.setattr(evaluate, "answer_with_context", answer)
-    report = evaluate.evaluate(dataset, tmp_path / "report.json")
+    monkeypatch.setattr(evaluate, "answer_research_question", answer)
+    report = evaluate.run_evaluation(dataset, tmp_path / "report.json")
     assert len(report["results"]) == 2
     assert report["summary"]["all"]["errors"] == 1
 
@@ -47,7 +51,7 @@ def test_duplicate_ids_are_rejected(tmp_path):
     path = tmp_path / "bad.csv"
     path.write_text("id,question\na,first\na,second\n")
     with pytest.raises(ValueError, match="unique"):
-        evaluate.load_cases(path)
+        evaluate.load_evaluation_cases(path)
 
 
 def test_human_paper_scope_and_expected_behavior_are_scoring_only(
@@ -69,8 +73,8 @@ def test_human_paper_scope_and_expected_behavior_are_scoring_only(
             "context": [{"title": "03_Attention_Is_All_You_Need.pdf"}],
         }
 
-    monkeypatch.setattr(evaluate, "answer_with_context", answer)
-    report = evaluate.evaluate(dataset, tmp_path / "report.json")
+    monkeypatch.setattr(evaluate, "answer_research_question", answer)
+    report = evaluate.run_evaluation(dataset, tmp_path / "report.json")
     assert seen == [("Question?", [])]
     assert report["results"][0]["metrics"]["source_recall"] == 1
     assert report["results"][0]["metrics"]["expected_abstention"] is False
@@ -84,14 +88,14 @@ def test_resume_skips_completed_cases(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(
         evaluate,
-        "answer_with_context",
+        "answer_research_question",
         lambda question, history: (
             calls.append(question)
             or {"answer": "ok", "status": "answered", "context": []}
         ),
     )
-    evaluate.evaluate(dataset, output, limit=1)
-    evaluate.evaluate(dataset, output, resume=True)
+    evaluate.run_evaluation(dataset, output, limit=1)
+    evaluate.run_evaluation(dataset, output, resume=True)
     assert calls == ["first", "second"]
 
 
@@ -109,9 +113,9 @@ def test_resume_retries_a_previous_error(tmp_path, monkeypatch):
             raise RuntimeError("temporary failure")
         return {"answer": "ok", "status": "answered", "context": []}
 
-    monkeypatch.setattr(evaluate, "answer_with_context", answer)
-    evaluate.evaluate(dataset, output)
-    report = evaluate.evaluate(dataset, output, resume=True)
+    monkeypatch.setattr(evaluate, "answer_research_question", answer)
+    evaluate.run_evaluation(dataset, output)
+    report = evaluate.run_evaluation(dataset, output, resume=True)
     assert len(report["results"]) == 1
     assert "result" in report["results"][0]
 
@@ -123,11 +127,11 @@ def test_max_cases_makes_resumable_batches(tmp_path, monkeypatch):
     output = tmp_path / "report.json"
     monkeypatch.setattr(
         evaluate,
-        "answer_with_context",
+        "answer_research_question",
         lambda question, history: {"answer": "ok", "status": "answered", "context": []},
     )
-    first = evaluate.evaluate(dataset, output, max_cases=1)
-    second = evaluate.evaluate(dataset, output, resume=True, max_cases=1)
+    first = evaluate.run_evaluation(dataset, output, max_cases=1)
+    second = evaluate.run_evaluation(dataset, output, resume=True, max_cases=1)
     assert len(first["results"]) == 1
     assert len(second["results"]) == 2
 
@@ -138,9 +142,11 @@ def test_resume_rejects_changed_configuration(tmp_path, monkeypatch):
     dataset.write_text("id,question\na,first\n")
     output = tmp_path / "report.json"
     monkeypatch.setattr(
-        evaluate, "answer_with_context", lambda *args: {"answer": "ok", "context": []}
+        evaluate,
+        "answer_research_question",
+        lambda *args: {"answer": "ok", "context": []},
     )
-    evaluate.evaluate(dataset, output)
+    evaluate.run_evaluation(dataset, output)
     monkeypatch.setattr(evaluate, "WORKFLOW_VERSION", "changed")
     with pytest.raises(ValueError, match="workflow"):
-        evaluate.evaluate(dataset, output, resume=True)
+        evaluate.run_evaluation(dataset, output, resume=True)

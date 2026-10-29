@@ -1,7 +1,9 @@
-"""Evaluate any CSV dataset without exposing its reference answers to the agent.
+"""Run benchmark questions through the research agent and save auditable results.
 
-Run: python -m app.evaluate path/to/cases.csv --output data/evaluations/run.json
-Human correctness/support reviews are deliberately left unscored until reviewed.
+Only each question enters the agent; expected answers, papers and reviewed evidence
+remain private scoring data. Save answers, passages, citations, timings and errors
+after every case, then export results for human review. Run: python -m app.evaluate
+cases.csv --output data/evaluations/run.json.
 """
 
 import argparse
@@ -21,13 +23,23 @@ from .config import (
     OLLAMA_BASE_URL,
     RERANK_MODEL,
 )
-from .evaluation_metrics import coverage_metrics, latency_summary, load_relevance
-from .paper_store import collection, embedding_signature
-from .services import WORKFLOW_VERSION, answer_with_context
+from .evaluation_metrics import (
+    load_evidence_labels,
+    measure_retrieval_coverage,
+    summarize_latency,
+)
+from .paper_store import build_index_signature, open_chunk_store
+from .services import WORKFLOW_VERSION, answer_research_question
+from .study_materials import load_study_passages
 
 
-def run_configuration() -> dict:
-    """Fingerprint executable pipeline sources and model settings for safe resume."""
+def build_evaluation_configuration() -> dict:
+    """Record model settings plus hashes of pipeline files and current index records.
+
+    Use this configuration to reject a resume that would mix results from different
+    code, models or indexes. The source hash includes comments and docstrings as
+    well as executable code.
+    """
     root = Path(__file__).parent
     files = (
         "services.py",
@@ -37,14 +49,16 @@ def run_configuration() -> dict:
         "llm.py",
         "config.py",
         "document_processing.py",
+        "neural_pdf_extraction.py",
         "paper_store.py",
+        "study_materials.py",
         "evaluation_metrics.py",
         "evaluate.py",
     )
     digest = hashlib.sha256(
         b"".join((root / name).read_bytes() for name in files)
     ).hexdigest()
-    stored = collection().get(include=["metadatas"])
+    stored = open_chunk_store().get(include=["metadatas"])
     index_rows = sorted(
         (key, meta.get("fingerprint", ""))
         for key, meta in zip(stored["ids"], stored["metadatas"])
@@ -54,7 +68,10 @@ def run_configuration() -> dict:
         "workflow": WORKFLOW_VERSION,
         "code_sha256": digest,
         "index_sha256": index_hash,
-        "index_signature": embedding_signature(),
+        "study_materials_sha256": hashlib.sha256(
+            json.dumps(load_study_passages(), sort_keys=True).encode()
+        ).hexdigest(),
+        "index_signature": build_index_signature(),
         "rerank_threshold": MIN_RERANK_SCORE,
         "ollama_url": OLLAMA_BASE_URL,
         "models": {
@@ -65,8 +82,12 @@ def run_configuration() -> dict:
     }
 
 
-def load_cases(path: Path) -> list[dict]:
-    """Accept arbitrary case types; validate IDs and keep reference labels private."""
+def load_evaluation_cases(path: Path) -> list[dict]:
+    """Read benchmark CSV rows and require a unique ID and nonblank question per row.
+
+    Keep optional category/reference columns available for scoring, without
+    restricting the dataset to one benchmark format.
+    """
     with path.open(encoding="utf-8-sig", newline="") as stream:
         rows = list(csv.DictReader(stream))
     if not rows or any(
@@ -79,21 +100,24 @@ def load_cases(path: Path) -> list[dict]:
     return rows
 
 
-def source_key(title: str) -> str:
-    """Normalize paper titles so filenames and human titles can be compared safely."""
+def normalize_paper_title(title: str) -> str:
+    """Make paper filenames and human-written titles comparable for source scoring.
+
+    Ignore filename extensions, leading numeric prefixes, case and punctuation; this
+    normalization is for evaluation, not retrieval scope selection.
+    """
     stem = Path(title.strip()).stem.casefold()
     stem = re.sub(r"^\d+[_ -]*", "", stem)
     return re.sub(r"[^a-z0-9]+", "", stem)
 
 
-def expected_sources(case: dict) -> set[str]:
-    """Read optional paper labels for scoring without ever passing them to the agent."""
-    names = case.get("source_docs") or case.get("paper_scope") or ""
-    return {source_key(name) for name in names.split(";") if name.strip()}
+def read_expected_abstention(case: dict) -> bool | None:
+    """Read whether a benchmark case expects the agent to decline answering.
 
-
-def expects_abstention(case: dict) -> bool | None:
-    """Use an explicit expected behavior when present, then an older unanswerable label."""
+    Prefer expected_behavior when supplied, otherwise recognize the unanswerable
+    case type. Return None when no expectation is labeled so missing labels are not
+    treated as false.
+    """
     behavior = case.get("expected_behavior", "").strip().casefold()
     if behavior:
         return behavior in {"abstain", "abstained", "no_answer", "refuse"}
@@ -102,20 +126,33 @@ def expects_abstention(case: dict) -> bool | None:
     return None
 
 
-def score_case(case: dict, result: dict, relevance: list[dict] | None = None) -> dict:
-    """Measure observable source coverage; leave semantic judgments to reviewers."""
-    expected = expected_sources(case)
-    found = {source_key(row.get("title", "")) for row in result.get("context", [])}
+def score_evaluation_result(
+    case: dict, result: dict, relevance: list[dict] | None = None
+) -> dict:
+    """Compare returned sources and passages with private benchmark labels.
+
+    Measure source/evidence coverage and expected refusal behavior after generation.
+    Leave correctness, supported-claim counts and citation support unset for human
+    review rather than inferring answer accuracy from retrieval alone.
+    """
+    # These optional paper labels are read only for scoring, never for retrieval.
+    names = case.get("source_docs") or case.get("paper_scope") or ""
+    expected = {
+        normalize_paper_title(name) for name in names.split(";") if name.strip()
+    }
+    found = {
+        normalize_paper_title(row.get("title", "")) for row in result.get("context", [])
+    }
     candidates = {
-        source_key(title)
+        normalize_paper_title(title)
         for title in result.get("retrieval_trace", {}).get("candidate_sources", [])
     }
     reranked = {
-        source_key(title)
+        normalize_paper_title(title)
         for title in result.get("retrieval_trace", {}).get("reranked_sources", [])
     }
     return {
-        **coverage_metrics(relevance or [], result),
+        **measure_retrieval_coverage(relevance or [], result),
         "source_recall": len(expected & found) / len(expected) if expected else None,
         "all_sources_found": expected <= found if expected else None,
         "candidate_source_recall": len(expected & candidates) / len(expected)
@@ -127,7 +164,7 @@ def score_case(case: dict, result: dict, relevance: list[dict] | None = None) ->
         "abstained": result.get("status") == "abstained"
         if "status" in result
         else None,
-        "expected_abstention": expects_abstention(case),
+        "expected_abstention": read_expected_abstention(case),
         "correctness_review": None,
         "supported_claims_review": None,
         "total_claims_review": None,
@@ -136,8 +173,13 @@ def score_case(case: dict, result: dict, relevance: list[dict] | None = None) ->
     }
 
 
-def summarize(rows: list[dict]) -> dict:
-    """Report counts and coverage by category without treating unreviewed as correct."""
+def summarize_evaluation_results(rows: list[dict]) -> dict:
+    """Aggregate evaluation coverage, timing, refusal behavior and reviewed correctness.
+
+    Group results overall and by available case/route categories. Keep errors and
+    scored sample counts visible; missing labels and unreviewed answers do not
+    become successful scores.
+    """
     groups = defaultdict(list)
     for row in rows:
         groups["all"].append(row)
@@ -192,7 +234,7 @@ def summarize(rows: list[dict]) -> dict:
         total_claims = sum(row["total_claims_review"] for row in claim_reviews)
         supported_claims = sum(row["supported_claims_review"] for row in claim_reviews)
         summary[name] = {
-            "latency": latency_summary(items),
+            "latency": summarize_latency(items),
             "cases": len(items),
             "errors": sum("error" in item for item in items),
             "source_recall": sum(recalls) / len(recalls) if recalls else None,
@@ -235,7 +277,7 @@ def summarize(rows: list[dict]) -> dict:
     return summary
 
 
-def evaluate(
+def run_evaluation(
     path: Path,
     output: Path,
     limit: int | None = None,
@@ -244,10 +286,15 @@ def evaluate(
     relevance_path: Path | None = None,
     runtime_state: str = "unclassified",
 ) -> dict:
-    """Run independent questions and checkpoint results after each success or error."""
+    """Run independent benchmark questions and checkpoint each answer or error to JSON.
+
+    On resume, verify dataset, labels, settings and index identity before keeping
+    completed cases and retrying failed ones. Pass only question text to the agent,
+    then score privately and update the summary after each case.
+    """
     dataset_hash = hashlib.sha256(path.read_bytes()).hexdigest()
-    cases = load_cases(path)
-    relevance = load_relevance(relevance_path, {case["id"] for case in cases})
+    cases = load_evaluation_cases(path)
+    relevance = load_evidence_labels(relevance_path, {case["id"] for case in cases})
     relevance_hash = (
         hashlib.sha256(relevance_path.read_bytes()).hexdigest()
         if relevance_path
@@ -274,23 +321,23 @@ def evaluate(
             raise ValueError(
                 "Cannot resume: relevance labels or runtime classification changed"
             )
-        if report.get("configuration") != run_configuration():
+        if report.get("configuration") != build_evaluation_configuration():
             raise ValueError(
                 "Cannot resume: workflow, model settings or code changed; choose a new report"
             )
-        if report.get("indexed_chunks") != collection().count():
+        if report.get("indexed_chunks") != open_chunk_store().count():
             raise ValueError(
                 "Cannot resume: the index chunk count changed; choose a new report"
             )
     else:
         report = {
             "created_at": datetime.now(UTC).isoformat(),
-            "configuration": run_configuration(),
+            "configuration": build_evaluation_configuration(),
             "dataset_sha256": dataset_hash,
             "relevance_sha256": relevance_hash,
             "runtime_state": runtime_state,
-            "index_signature": embedding_signature(),
-            "indexed_chunks": collection().count(),
+            "index_signature": build_index_signature(),
+            "indexed_chunks": open_chunk_store().count(),
             "models": {
                 "chat": CHAT_MODEL,
                 "embedding": EMBED_MODEL,
@@ -312,10 +359,12 @@ def evaluate(
         row["runtime_state"] = runtime_state
         try:
             # No labels, expected papers, or reference answers enter this call.
-            result = answer_with_context(case["question"], [])
+            result = answer_research_question(case["question"], [])
             row.update(
                 result=result,
-                metrics=score_case(case, result, relevance.get(case["id"], [])),
+                metrics=score_evaluation_result(
+                    case, result, relevance.get(case["id"], [])
+                ),
             )
         except Exception as exc:  # noqa: BLE001 - an evaluation must record one failed case and continue.
             row["error"] = f"{type(exc).__name__}: {exc}"
@@ -324,7 +373,7 @@ def evaluate(
             saved for saved in report["results"] if saved["id"] != case["id"]
         ]
         report["results"].append(row)
-        report["summary"] = summarize(report["results"])
+        report["summary"] = summarize_evaluation_results(report["results"])
         output.write_text(
             json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
         )
@@ -351,7 +400,7 @@ if __name__ == "__main__":
         default="unclassified",
     )
     args = parser.parse_args()
-    evaluate(
+    run_evaluation(
         args.dataset,
         args.output,
         args.limit,

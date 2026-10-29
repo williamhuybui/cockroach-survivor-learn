@@ -1,4 +1,8 @@
-"""Check browser and evaluation contracts using the real temporary SQLite DB."""
+"""Test browser/API contracts using temporary application storage.
+
+Exercise chat restoration, saved plans, status and quiz routes through the FastAPI
+test client; external model work is replaced where needed.
+"""
 
 from fastapi.testclient import TestClient
 
@@ -17,7 +21,7 @@ def test_ui_serves_chat_and_static_assets():
 def test_chat_survives_refresh_and_can_be_deleted(monkeypatch):
     monkeypatch.setattr(
         main,
-        "respond",
+        "handle_chat_message",
         lambda *args: {"kind": "answer", "answer": "Ready", "sources": []},
     )
     body = {"message": "Question", "session_id": "browser-id"}
@@ -45,7 +49,7 @@ def test_quiz_storage_and_grading_use_sqlite(monkeypatch):
 
     monkeypatch.setattr(
         services,
-        "search",
+        "retrieve_relevant_passages",
         lambda query: [{"id": "paper", "content": "Evidence", "title": "Paper"}],
     )
     quiz = QuizContent(
@@ -59,7 +63,7 @@ def test_quiz_storage_and_grading_use_sqlite(monkeypatch):
             }
         ]
     )
-    monkeypatch.setattr(services, "generate", lambda *args: quiz)
+    monkeypatch.setattr(services, "generate_from_evidence", lambda *args: quiz)
     response = client.post("/api/chat", json={"message": '/quiz "RAG" medium 1'})
     assert response.status_code == 200
     assert "correct_index" not in response.json()["questions"][0]

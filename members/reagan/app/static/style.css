@@ -1,4 +1,5 @@
-/* Shared tokens keep this plain HTML client easy to adjust. */
+/* Visual styling for index.html; app.js changes classes to show states and dialogs. */
+/* The variables below define the shared colors; selectors below style layout and controls. */
 :root{color-scheme:dark;--bg:#08090b;--panel:#11141a;--line:#292e38;--text:#eef0f3;--muted:#939aa6;--blue:#8fbcff}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.65 "Segoe UI",sans-serif}
@@ -9,6 +10,7 @@ button:disabled{opacity:.5;cursor:wait}
 button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
 [hidden]{display:none!important}
 h1,h2,p{margin-top:0}
+/* Desktop layout: saved chats at the left, conversation and composer at the right. */
 .workspace{display:grid;grid-template-columns:264px minmax(0,1fr);height:100dvh}
 aside{display:flex;flex-direction:column;background:#0c0d10;border-right:1px solid var(--line);padding:22px 16px;min-height:0}
 .brand{display:flex;align-items:center;gap:12px;font-weight:650;white-space:nowrap;font-size:15px;margin-bottom:28px}
@@ -58,6 +60,7 @@ textarea{resize:none;background:transparent;border:0;color:var(--text);width:100
 .send,.primary{background:#edf1f7;color:#101216;font-weight:600}
 .send{width:38px;height:38px;padding:0;font-size:24px;border-radius:50%}
 label{display:block}
+/* The quiz dialog scrolls independently when questions exceed the screen height. */
 dialog{width:min(620px,calc(100% - 28px));max-height:90dvh;overflow-y:auto;border:1px solid #343b48;border-radius:20px;background:#11141a;color:var(--text);padding:28px;box-shadow:0 30px 100px #0008}
 dialog::backdrop{background:#000b;backdrop-filter:blur(3px)}
 .modal-header{display:flex;justify-content:space-between;gap:16px;margin-bottom:22px}
@@ -72,4 +75,5 @@ legend{font-size:17px;font-weight:600;margin-bottom:18px}
 #quiz-error{color:#ffb2a7}
 .result{border-top:1px solid var(--line);padding-top:16px}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+/* On narrow screens the sidebar opens as an overlay instead of shrinking the chat. */
 @media(max-width:760px){.workspace{grid-template-columns:1fr}aside{display:none;position:fixed;z-index:2;width:264px;height:100dvh;box-shadow:20px 0 50px #0008}.sidebar-open aside{display:flex}#toggle-sidebar{display:grid}header{padding:12px 16px}#conversation{padding:25px 18px}.composer-area{padding:0 14px 16px}dialog{padding:22px}.message.human{max-width:94%}#welcome h1{font-size:23px}.history-item .delete-chat{visibility:visible}}

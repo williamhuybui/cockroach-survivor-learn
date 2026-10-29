@@ -1,4 +1,8 @@
-"""Check bounded planning, conditional routes, task coverage and shared context."""
+"""Test decomposition and paper-scope resolution for questions and follow-ups.
+
+Controlled planner outputs check direct, multipart and comparison routes, including
+ambiguous or missing paper references.
+"""
 
 import pytest
 
@@ -9,16 +13,18 @@ from app.question_planning import QuestionPlan, SearchTask
 
 def test_simple_question_skips_planner_model(monkeypatch):
     monkeypatch.setattr(
-        planning, "structured_request", lambda *args: pytest.fail("Unexpected model")
+        planning,
+        "request_structured_response",
+        lambda *args: pytest.fail("Unexpected model"),
     )
-    result = planning.plan_question("What is attention?", [], [{"title": "A"}])
+    result = planning.plan_question_tasks("What is attention?", [], [{"title": "A"}])
     assert len(result.tasks) == 1
 
 
 def test_unknown_comparison_paper_clarifies(monkeypatch):
     monkeypatch.setattr(
         planning,
-        "structured_request",
+        "request_structured_response",
         lambda *args: QuestionPlan(
             route="comparison",
             tasks=[
@@ -27,19 +33,23 @@ def test_unknown_comparison_paper_clarifies(monkeypatch):
             ],
         ),
     )
-    assert planning.plan_question("Compare A and B", [], [{"title": "B"}]).clarification
+    assert planning.plan_question_tasks(
+        "Compare A and B", [], [{"title": "B"}]
+    ).clarification
 
 
 def test_clarification_skips_search(monkeypatch):
     monkeypatch.setattr(
         services,
-        "plan_question",
+        "plan_question_tasks",
         lambda *args: QuestionPlan(clarification="Which paper?"),
     )
     monkeypatch.setattr(
-        services, "search", lambda *args, **kwargs: pytest.fail("Must skip search")
+        services,
+        "retrieve_relevant_passages",
+        lambda *args, **kwargs: pytest.fail("Must skip search"),
     )
-    result = services.answer_with_context("Compare these papers")
+    result = services.answer_research_question("Compare these papers")
     assert result["status"] == "clarification"
     assert not result["context"]
 
@@ -47,7 +57,7 @@ def test_clarification_skips_search(monkeypatch):
 def test_comparison_scopes_tasks_and_marks_missing_coverage(monkeypatch):
     monkeypatch.setattr(
         services,
-        "plan_question",
+        "plan_question_tasks",
         lambda *args: QuestionPlan(
             route="comparison",
             tasks=[
@@ -65,10 +75,10 @@ def test_comparison_scopes_tasks_and_marks_missing_coverage(monkeypatch):
         )
         return [{"id": paper, "title": paper, "content": "This uses 8 GPUs."}]
 
-    monkeypatch.setattr(services, "search", search)
+    monkeypatch.setattr(services, "retrieve_relevant_passages", search)
     monkeypatch.setattr(
         grounding,
-        "generate",
+        "generate_from_evidence",
         lambda *args: grounding.DraftAnswer(
             status="answered",
             claims=[
@@ -81,7 +91,7 @@ def test_comparison_scopes_tasks_and_marks_missing_coverage(monkeypatch):
             ],
         ),
     )
-    result = services.answer_with_context("Compare A and B")
+    result = services.answer_research_question("Compare A and B")
     assert calls == [("Method A?", "A"), ("Method B?", "B")]
     assert result["retrieval_trace"]["candidate_sources"] == ["A", "B"]
     assert result["status"] == "partial"
@@ -95,9 +105,9 @@ def test_shared_budget_and_provenance(monkeypatch):
             {"id": f"{query}{n}", "content": "x" * 2400} for n in range(5)
         ]
 
-    monkeypatch.setattr(services, "search", search)
+    monkeypatch.setattr(services, "retrieve_relevant_passages", search)
     tasks = [{"question": q, "paper": None} for q in "abc"]
-    result = services.retrieve({"tasks": tasks, "retrieval_trace": {}})
+    result = services.retrieve_task_evidence({"tasks": tasks, "retrieval_trace": {}})
     assert (
         sum(len(row["content"]) for row in result["evidence"])
         <= services.CONTEXT_CHARACTERS
@@ -109,7 +119,7 @@ def test_claim_cannot_cover_another_paper():
     claim = grounding.SupportedClaim(
         text="Uses 8 GPUs.", source_id="S1", quote="uses 8 GPUs", task_ids=[1]
     )
-    checked = grounding.verify_claims(
+    checked = grounding.verify_answer_claims(
         grounding.DraftAnswer(status="answered", claims=[claim]),
         [{"id": "S1", "title": "A", "content": "uses 8 GPUs", "task_ids": [0]}],
         [{"question": "A?", "paper": "A"}, {"question": "B?", "paper": "B"}],
@@ -132,8 +142,8 @@ def test_multipart_plan_keeps_subquestions(monkeypatch):
             ],
         )
 
-    monkeypatch.setattr(planning, "structured_request", structured)
-    result = planning.plan_question(
+    monkeypatch.setattr(planning, "request_structured_response", structured)
+    result = planning.plan_question_tasks(
         "Explain the method and discuss its limitations", [], [{"title": "A"}]
     )
     assert len(result.tasks) == 2
@@ -142,6 +152,7 @@ def test_multipart_plan_keeps_subquestions(monkeypatch):
         "recent_user_questions",
         "recent_conversation",
         "indexed_titles",
+        "indexed_papers",
     }
 
 
@@ -164,8 +175,11 @@ def test_all_task_claims_can_form_complete_answer():
             for i, row in enumerate(rows)
         ],
     )
-    checked = grounding.verify_claims(draft, rows, tasks)
-    assert grounding.format_answer(draft, checked, rows, tasks)["status"] == "answered"
+    checked = grounding.verify_answer_claims(draft, rows, tasks)
+    assert (
+        grounding.format_verified_answer(draft, checked, rows, tasks)["status"]
+        == "answered"
+    )
 
 
 def test_plan_has_no_fixed_task_count_limit():

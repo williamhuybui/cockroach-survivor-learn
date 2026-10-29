@@ -1,4 +1,8 @@
-"""Check private evidence requirements, stage loss, latency and label isolation."""
+"""Test reviewed evidence coverage and latency calculations with known inputs.
+
+Distinguish correct-paper presence from required-quote coverage and preserve unknown
+scores when labels are missing.
+"""
 
 import json
 
@@ -6,10 +10,10 @@ import pytest
 
 from app import evaluate, retrieval
 from app.evaluation_metrics import (
-    coverage_metrics,
-    evidence_coverage,
-    latency_summary,
-    load_relevance,
+    load_evidence_labels,
+    measure_evidence_coverage,
+    measure_retrieval_coverage,
+    summarize_latency,
 )
 
 
@@ -28,9 +32,9 @@ def labels():
 
 def test_correct_paper_alone_is_not_relevant_evidence():
     assert (
-        evidence_coverage(labels(), [{"title": "A", "content": "Unrelated text"}])[
-            "coverage"
-        ]
+        measure_evidence_coverage(
+            labels(), [{"title": "A", "content": "Unrelated text"}]
+        )["coverage"]
         == 0
     )
 
@@ -41,7 +45,7 @@ def test_candidate_success_can_be_lost_during_context_selection():
         "retrieval_trace": {"tasks": [{"trace": {"candidate_passages": passages}}]},
         "context": passages[:1],
     }
-    metrics = coverage_metrics(labels(), result)
+    metrics = measure_retrieval_coverage(labels(), result)
     assert metrics["candidate_evidence_recall"] == 1
     assert metrics["final_evidence_coverage"] == 0.5
     assert not metrics["all_requirements_covered"]
@@ -51,7 +55,7 @@ def test_candidate_success_can_be_lost_during_context_selection():
 def test_alternative_spans_do_not_inflate_requirement_count():
     rows = [labels()[0], {**labels()[0], "quote": "Alternative supporting evidence"}]
     assert (
-        evidence_coverage(rows, [{"title": "A", "content": rows[1]["quote"]}])[
+        measure_evidence_coverage(rows, [{"title": "A", "content": rows[1]["quote"]}])[
             "coverage"
         ]
         == 1
@@ -59,12 +63,12 @@ def test_alternative_spans_do_not_inflate_requirement_count():
 
 
 def test_missing_labels_and_missing_audit_stay_unscored():
-    assert coverage_metrics([], {})["final_evidence_coverage"] is None
-    assert coverage_metrics(labels(), {})["candidate_evidence_recall"] is None
+    assert measure_retrieval_coverage([], {})["final_evidence_coverage"] is None
+    assert measure_retrieval_coverage(labels(), {})["candidate_evidence_recall"] is None
 
 
 def test_latency_includes_failed_total_and_missing_stages():
-    result = latency_summary(
+    result = summarize_latency(
         [
             {"seconds": 1, "result": {"timings": {"retrieval": 0.5}}},
             {"seconds": 3, "error": "offline"},
@@ -79,7 +83,7 @@ def test_unknown_label_question_is_rejected(tmp_path):
     path = tmp_path / "relevance.json"
     path.write_text(json.dumps(labels()))
     with pytest.raises(ValueError, match="unknown"):
-        load_relevance(path, {"another"})
+        load_evidence_labels(path, {"another"})
 
 
 def test_labels_never_enter_agent_and_resume_checks_them(tmp_path, monkeypatch):
@@ -94,13 +98,13 @@ def test_labels_never_enter_agent_and_resume_checks_them(tmp_path, monkeypatch):
         seen.append((question, history))
         return {"context": [], "status": "abstained"}
 
-    monkeypatch.setattr(evaluate, "answer_with_context", answer)
-    report = evaluate.evaluate(dataset, output, relevance_path=relevance)
+    monkeypatch.setattr(evaluate, "answer_research_question", answer)
+    report = evaluate.run_evaluation(dataset, output, relevance_path=relevance)
     assert seen == [("Compare?", [])]
     assert report["summary"]["all"]["final_evidence_coverage"] == 0
     relevance.write_text(json.dumps(labels()[:1]))
     with pytest.raises(ValueError, match="relevance"):
-        evaluate.evaluate(dataset, output, resume=True, relevance_path=relevance)
+        evaluate.run_evaluation(dataset, output, resume=True, relevance_path=relevance)
 
 
 def test_stage_audit_is_opt_in_and_preserves_rank_order(monkeypatch):
@@ -108,13 +112,17 @@ def test_stage_audit_is_opt_in_and_preserves_rank_order(monkeypatch):
         {"id": "a", "title": "A", "content": "A"},
         {"id": "b", "title": "B", "content": "B"},
     ]
-    monkeypatch.setattr(retrieval, "hybrid_candidates", lambda *args: rows)
-    monkeypatch.setattr(retrieval, "rerank_candidates", lambda *args: rows[::-1])
-    monkeypatch.setattr(retrieval, "expand_parents", lambda ranked, limit: ranked[:1])
+    monkeypatch.setattr(retrieval, "find_hybrid_candidates", lambda *args: rows)
+    monkeypatch.setattr(
+        retrieval, "rerank_passage_candidates", lambda *args: rows[::-1]
+    )
+    monkeypatch.setattr(
+        retrieval, "expand_parent_section_windows", lambda ranked, limit: ranked[:1]
+    )
     audit = {"capture_evidence": True}
-    retrieval.search("q", diagnostics=audit)
+    retrieval.retrieve_relevant_passages("q", diagnostics=audit)
     assert [row["id"] for row in audit["reranked_passages"]] == ["b", "a"]
     assert len(audit["expanded_passages"]) == 1
     ordinary = {}
-    retrieval.search("q", diagnostics=ordinary)
+    retrieval.retrieve_relevant_passages("q", diagnostics=ordinary)
     assert "candidate_passages" not in ordinary

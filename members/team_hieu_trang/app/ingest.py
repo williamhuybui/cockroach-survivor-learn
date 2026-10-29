@@ -1,32 +1,37 @@
-"""Index only the research PDFs in a Google Drive sync manifest."""
+"""Build and refresh the local research-paper index before users ask questions.
+
+Read the Drive manifest, extract PDF sections, embed child chunks and save them in
+Chroma. SQLite records a summary of the run. This command does not watch Drive
+automatically; run drive_sync.py first when files change.
+"""
 
 import argparse
 import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from time import perf_counter
 from urllib.parse import urlparse
 
-from .db import initialize_database, new_id, open_database
-from .document_processing import chunk_sections, classify_format, extract_sections
-from .llm import embed_texts
+from .db import create_record_id, initialize_database, open_database
+from .document_processing import (
+    EXTRACTION_PROFILE,
+    extract_pdf_sections,
+    split_sections_into_chunks,
+)
+from .llm import embed_document_chunks
+from .neural_pdf_extraction import NeuralPageReader
 from .paper_store import (
-    collection,
-    embedding_signature,
-    parent_collection,
-    reset_collection,
+    build_index_signature,
+    open_chunk_store,
+    open_parent_section_store,
+    reset_paper_stores,
 )
 
 EMBED_BATCH_SIZE = 16
 
 
-def file_sha256(path: Path) -> str:
-    """Return the content hash that identifies one exact source manifest."""
-
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def save_index_run(
+def save_index_run_summary(
     run_id: str,
     started_at: str,
     manifest_hash: str,
@@ -36,7 +41,12 @@ def save_index_run(
     counts: dict,
     error: str = "",
 ) -> None:
-    """Save a small, queryable record of a completed or failed index attempt."""
+    """Record what happened during one indexing run in SQLite.
+
+    Store input/settings identifiers, timestamps, counts and any error so evaluation
+    results can be traced to an index run. This is a summary, not a backup of the
+    vectors or papers.
+    """
 
     with open_database() as database:
         database.execute(
@@ -51,7 +61,7 @@ def save_index_run(
                 started_at,
                 datetime.now(UTC).isoformat(),
                 manifest_hash,
-                embedding_signature(),
+                build_index_signature(),
                 int(rebuild),
                 source_count,
                 status,
@@ -61,8 +71,13 @@ def save_index_run(
         )
 
 
-def load_manifest(path: Path) -> list[dict]:
-    """Validate the downloaded Drive files and ignore non-PDF items."""
+def load_source_manifest(path: Path) -> list[dict]:
+    """Read the downloaded-paper list and validate it before changing the index.
+
+    Resolve local paths relative to the manifest, require unique Drive IDs and
+    source links, and keep PDF entries. Reject an empty or invalid source list
+    rather than accidentally clearing indexed papers.
+    """
 
     rows = json.loads(path.read_text(encoding="utf-8-sig"))
     if not isinstance(rows, list):
@@ -77,7 +92,7 @@ def load_manifest(path: Path) -> list[dict]:
         if row["id"] in seen_ids:
             raise ValueError(f"Duplicate Drive source ID: {row['id']}")
         seen_ids.add(row["id"])
-        if classify_format(Path(row["path"])) != "pdf":
+        if Path(row["path"]).suffix.lower() != ".pdf":
             continue
         if (
             row.get("source_type") != "google_drive"
@@ -96,20 +111,23 @@ def load_manifest(path: Path) -> list[dict]:
     return papers
 
 
-def fingerprint(row: dict) -> str:
-    """Detect changed PDF bytes or source metadata before re-embedding."""
+def index_research_paper(store, row: dict, reader=None) -> tuple[str, int]:
+    """Extract, chunk, embed and save one paper, or skip it if unchanged.
 
-    identity = f"{row['title']}|{row['source_url']}|{embedding_signature()}".encode()
-    return hashlib.sha256(row["_path"].read_bytes() + identity).hexdigest()
+    Compare its file/settings fingerprint with existing records first. Finish
+    extraction and embedding before replacing records so those failures leave the
+    previous paper searchable. Save child vectors and section text together with
+    source and page metadata.
+    """
 
-
-def index_paper(store, row: dict) -> tuple[str, int]:
-    """Extract, chunk, embed, and replace one PDF in Chroma."""
-
+    started = perf_counter()
     source_id = row["id"]
     existing = store.get(where={"document_id": source_id}, include=["metadatas"])
-    digest = fingerprint(row)
-    parents = parent_collection()
+    # Calculate a fingerprint from PDF bytes, source details and extraction settings.
+    # Matching fingerprints let a resumed run skip completed work for this paper.
+    identity = f"{row['title']}|{row['source_url']}|{build_index_signature()}|{EXTRACTION_PROFILE}".encode()
+    digest = hashlib.sha256(row["_path"].read_bytes() + identity).hexdigest()
+    parents = open_parent_section_store()
     existing_parents = parents.get(where={"document_id": source_id})
     if (
         existing["ids"]
@@ -120,19 +138,33 @@ def index_paper(store, row: dict) -> tuple[str, int]:
         )
         and existing_parents["ids"]
     ):
+        print(f"UNCHANGED {row['title']}", flush=True)
         return "unchanged", 0
 
-    document_type, sections = extract_sections(row["_path"])
-    chunks = chunk_sections(sections, row["title"])
+    print(f"EXTRACT {row['title']}: starting", flush=True)
+    extracting = perf_counter()
+    document_type, sections = extract_pdf_sections(row["_path"], reader=reader)
+    chunks = split_sections_into_chunks(sections, row["title"])
     if not chunks:
         # Keep the old index intact if extraction fails (for example a scanned PDF).
         print(f"SKIP {row['title']}: no extractable text; OCR is not configured")
         return "skipped", 0
+    print(
+        f"EXTRACT {row['title']}: {perf_counter() - extracting:.2f}s, {len(sections)} sections, {len(chunks)} chunks",
+        flush=True,
+    )
+    embedding = perf_counter()
     # Finish embedding before writing so a model failure leaves the old paper intact.
     vectors = []
     for offset in range(0, len(chunks), EMBED_BATCH_SIZE):
         batch = chunks[offset : offset + EMBED_BATCH_SIZE]
-        vectors.extend(embed_texts([chunk.page_content for chunk in batch]))
+        print(
+            f"EMBED {row['title']}: batch {offset // EMBED_BATCH_SIZE + 1}/{(len(chunks) + EMBED_BATCH_SIZE - 1) // EMBED_BATCH_SIZE}",
+            flush=True,
+        )
+        vectors.extend(embed_document_chunks([chunk.page_content for chunk in batch]))
+    print(f"EMBED {row['title']}: {perf_counter() - embedding:.2f}s", flush=True)
+    writing = perf_counter()
     indexed_at = datetime.now(UTC).isoformat()
     new_ids = [f"{source_id}:{digest[:12]}:{index}" for index in range(len(chunks))]
     parent_ids = {}
@@ -153,12 +185,19 @@ def index_paper(store, row: dict) -> tuple[str, int]:
                 "source_url": row["source_url"],
                 "location": chunk.metadata["location"],
                 "heading": chunk.metadata["heading"],
+                "section_path": chunk.metadata["section_path"],
+                "heading_level": section.heading_level,
+                "evidence_type": chunk.metadata["evidence_type"],
+                "reference_label": section.reference_label,
+                "extraction_profile": EXTRACTION_PROFILE,
+                "extraction_method": section.extraction_method,
+                "structure_confidence": section.structure_confidence,
+                "review_reason": section.review_reason,
                 "document_type": document_type,
                 "fingerprint": digest,
                 "indexed_at": indexed_at,
                 "chunk_count": len(chunks),
                 "parent_id": parent_id,
-                "child_index": chunk.metadata["child_index"],
                 "page_start": int(page_parts[1]),
                 "page_end": int(page_parts[-1]),
             }
@@ -175,6 +214,16 @@ def index_paper(store, row: dict) -> tuple[str, int]:
             {
                 "document_id": source_id,
                 "heading": sections[index].heading,
+                "section_path": " > ".join(sections[index].heading_path),
+                "heading_level": sections[index].heading_level,
+                "reference_label": sections[index].reference_label,
+                "evidence_type": "caption"
+                if sections[index].strategy == "pdf-caption"
+                else "prose",
+                "extraction_profile": EXTRACTION_PROFILE,
+                "extraction_method": sections[index].extraction_method,
+                "structure_confidence": sections[index].structure_confidence,
+                "review_reason": sections[index].review_reason,
                 "location": sections[index].location,
                 "fingerprint": digest,
             }
@@ -195,15 +244,23 @@ def index_paper(store, row: dict) -> tuple[str, int]:
     ]
     if stale_parents:
         parents.delete(ids=stale_parents)
-    print(f"INDEX {row['title']}: {len(chunks)} chunks ({document_type})")
+    print(f"STORE {row['title']}: {perf_counter() - writing:.2f}s", flush=True)
+    print(
+        f"INDEX {row['title']}: {len(chunks)} chunks ({document_type}), total {perf_counter() - started:.2f}s",
+        flush=True,
+    )
     return "indexed", len(chunks)
 
 
-def remove_missing_papers(store, current_ids: set[str]) -> int:
-    """Remove child and parent records absent from the validated source manifest."""
+def remove_unlisted_papers(store, current_ids: set[str]) -> int:
+    """Remove indexed records for papers no longer present in the source manifest.
+
+    Delete both child chunks and stored sections so removed papers cannot appear in
+    search or context expansion.
+    """
 
     removed_chunks = 0
-    for index in (store, parent_collection()):
+    for index in (store, open_parent_section_store()):
         saved = index.get(include=["metadatas"])
         stale_ids = [
             key
@@ -217,33 +274,40 @@ def remove_missing_papers(store, current_ids: set[str]) -> int:
     return removed_chunks
 
 
-def run(manifest: Path, rebuild: bool = False) -> dict:
-    """Sync the current PDF set; rebuild only when the user explicitly asks."""
+def ingest_research_papers(manifest: Path, rebuild: bool = False) -> dict:
+    """Coordinate a complete indexing run and return its result counts.
 
-    papers = load_manifest(manifest)
+    Validate sources, optionally clear collections for an explicit rebuild, and
+    reuse one neural worker across papers. Update the last-ingested time on success
+    and record completed or failed runs. Always close the worker when the command
+    exits.
+    """
+
+    papers = load_source_manifest(manifest)
     initialize_database()
     counts = {"indexed": 0, "unchanged": 0, "skipped": 0, "chunks": 0}
-    run_id, started_at = new_id(), datetime.now(UTC).isoformat()
-    manifest_hash = file_sha256(manifest)
+    run_id, started_at = create_record_id(), datetime.now(UTC).isoformat()
+    manifest_hash = hashlib.sha256(manifest.read_bytes()).hexdigest()
+    reader = NeuralPageReader()
     try:
         if rebuild:
-            reset_collection()
-        store = collection()
+            reset_paper_stores()
+        store = open_chunk_store()
         for row in papers:
-            outcome, chunk_count = index_paper(store, row)
+            outcome, chunk_count = index_research_paper(store, row, reader=reader)
             counts[outcome] += 1
             counts["chunks"] += chunk_count
-        counts["removed"] = remove_missing_papers(store, {row["id"] for row in papers})
+        counts["removed"] = remove_unlisted_papers(store, {row["id"] for row in papers})
         with open_database() as database:
             database.execute(
                 "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
                 ("last_ingested_at", datetime.now(UTC).isoformat()),
             )
-        save_index_run(
+        save_index_run_summary(
             run_id, started_at, manifest_hash, rebuild, len(papers), "completed", counts
         )
     except Exception as exc:
-        save_index_run(
+        save_index_run_summary(
             run_id,
             started_at,
             manifest_hash,
@@ -254,6 +318,8 @@ def run(manifest: Path, rebuild: bool = False) -> dict:
             f"{type(exc).__name__}: {exc}",
         )
         raise
+    finally:
+        reader.close()
     print(json.dumps(counts))
     return counts
 
@@ -263,4 +329,4 @@ if __name__ == "__main__":
     parser.add_argument("manifest", type=Path)
     parser.add_argument("--rebuild", action="store_true")
     arguments = parser.parse_args()
-    run(arguments.manifest.resolve(), arguments.rebuild)
+    ingest_research_papers(arguments.manifest.resolve(), arguments.rebuild)

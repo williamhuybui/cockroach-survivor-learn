@@ -1,4 +1,10 @@
-"""LangGraph retrieval and answer steps for research-paper questions."""
+"""Coordinate the question-to-answer workflow using LangGraph.
+
+The graph plans search tasks, retrieves evidence, asks Gemma for a draft, verifies
+its references and formats a response. Conditional edges stop for clarification,
+plan approval or missing evidence. Chat commands and quizzes enter through
+handle_chat_message().
+"""
 
 import json
 from time import perf_counter
@@ -7,31 +13,35 @@ from typing import NotRequired
 
 from langgraph.graph import END, START, StateGraph
 
-from .db import new_id, open_database
+from .db import create_record_id, open_database
 from .grounding import (
     NOT_IN_DOCUMENTS,
     DraftAnswer,
-    abstention,
-    draft_answer,
-    format_answer,
-    source_cards,
-    verify_claims,
+    build_abstention_response,
+    build_source_citations,
+    format_verified_answer,
+    generate_grounded_draft,
+    verify_answer_claims,
 )
-from .llm import DEFAULT_OUTPUT_TOKENS, generate
-from .paper_store import source_rows
-from .question_planning import QuestionPlan, SearchTask, plan_question
+from .llm import generate_from_evidence
+from .paper_store import list_indexed_papers
+from .question_planning import QuestionPlan, plan_question_tasks
 from .quiz_validation import (
     QuizContent,
     QuizRequest,
+    hide_quiz_answer_key,
     parse_quiz_command,
-    public_quiz,
-    validate_source_ids,
+    validate_quiz_citations,
 )
-from .retrieval import CONTEXT_CHARACTERS, search
+from .retrieval import CONTEXT_CHARACTERS, retrieve_relevant_passages
 
 
-def label_evidence(evidence: list[dict]) -> list[dict]:
-    """Give the local model short citation labels it can copy reliably."""
+def assign_citation_labels(evidence: list[dict]) -> list[dict]:
+    """Give selected evidence short source labels such as S1 and S2.
+
+    Preserve each original chunk ID as chunk_id for tracing. Short labels are easier
+    for Gemma to cite and for verification to look up within this answer.
+    """
 
     return [
         {**row, "chunk_id": row["id"], "id": f"S{number}"}
@@ -39,14 +49,19 @@ def label_evidence(evidence: list[dict]) -> list[dict]:
     ]
 
 
-def quiz_payload(request: QuizRequest, evidence: list[dict]) -> dict:
-    """Make grounded quiz questions and reject invented source references."""
+def generate_quiz_content(request: QuizRequest, evidence: list[dict]) -> dict:
+    """Generate multiple-choice questions from retrieved paper evidence.
+
+    Assign source labels, ask Gemma for structured questions and reject wrong
+    counts, duplicate questions or unknown citations before returning the quiz
+    content.
+    """
 
     if not evidence:
         raise ValueError("No indexed paper evidence found for this quiz")
-    evidence = label_evidence(evidence)
+    evidence = assign_citation_labels(evidence)
     ids = ", ".join(row["id"] for row in evidence)
-    quiz = generate(
+    quiz = generate_from_evidence(
         QuizContent,
         f"Create exactly {request.count} multiple-choice questions about the topic in the request. "
         f"Difficulty: {request.difficulty}. Easy=recall; medium=application; hard=scenarios. "
@@ -64,26 +79,30 @@ def quiz_payload(request: QuizRequest, evidence: list[dict]) -> dict:
     ):
         raise ValueError("Duplicate quiz questions returned")
     for question in quiz.questions:
-        validate_source_ids(question.source_ids, evidence)
+        validate_quiz_citations(question.source_ids, evidence)
     return {
         "topic": request.topic,
         "difficulty": request.difficulty,
         **quiz.model_dump(),
-        "sources": source_cards(evidence),
+        "sources": build_source_citations(evidence),
     }
 
 
-def make_quiz(request: QuizRequest) -> dict:
-    """Save a quiz while leaving the answer key on the server until submission."""
+def create_and_save_quiz(request: QuizRequest) -> dict:
+    """Retrieve topic evidence, generate a quiz and save its full answer key in SQLite.
 
-    payload = quiz_payload(request, search(request.topic))
-    quiz_id = new_id()
+    Return a quiz ID and questions without correct answers; submission uses the
+    saved key for grading.
+    """
+
+    payload = generate_quiz_content(request, retrieve_relevant_passages(request.topic))
+    quiz_id = create_record_id()
     with open_database() as database:
         database.execute(
             "INSERT INTO quizzes (id, payload) VALUES (?, ?)",
             (quiz_id, json.dumps(payload)),
         )
-    return {"kind": "quiz", "quiz_id": quiz_id, **public_quiz(payload)}
+    return {"kind": "quiz", "quiz_id": quiz_id, **hide_quiz_answer_key(payload)}
 
 
 WORKFLOW_VERSION = "reviewed-plan-v3"
@@ -92,7 +111,12 @@ MAX_TASKS_PER_BATCH = 5
 
 
 class ChatState(TypedDict, total=False):
-    """One question's plan, evidence, draft, verification and final response."""
+    """Describe the data passed between LangGraph nodes for one request.
+
+    Nodes add a plan, evidence, a draft, verification and a final response to this
+    shared dictionary. Optional fields track approval, deferred tasks and evaluation
+    timings without requiring every route to generate an answer.
+    """
 
     message: str
     history: list[dict]
@@ -114,22 +138,27 @@ class ChatState(TypedDict, total=False):
     consistency_report: NotRequired[dict]
 
 
-def plan(state: ChatState) -> dict:
-    """Resolve requested papers and create bounded search tasks before retrieval."""
+def plan_search_tasks(state: ChatState) -> dict:
+    """Prepare search tasks from an approved plan or a newly planned question.
+
+    Check named papers against the current index and request review when needed.
+    Execute only a batch that fits the response context budget, retaining remaining
+    tasks for later approval. Return graph state updates and planning diagnostics.
+    """
     started = perf_counter()
-    papers = source_rows()
+    papers = list_indexed_papers()
+    indexed_titles = {row["title"] for row in papers}
     approved = state.get("approved_plan")
     planned = (
         QuestionPlan.model_validate(approved)
         if approved
-        else plan_question(state["message"], state.get("history", []), papers)
+        else plan_question_tasks(state["message"], state.get("history", []), papers)
     )
     if planned.clarification and not state.get("allow_clarification", True):
         # Unattended callers (API, evaluation) cannot answer a question back; search everything.
         planned = QuestionPlan(tasks=[SearchTask(question=state["message"])])
     if approved and any(
-        task.paper and task.paper not in {row["title"] for row in papers}
-        for task in planned.tasks
+        task.paper and task.paper not in indexed_titles for task in planned.tasks
     ):
         planned = QuestionPlan(
             clarification="The indexed papers changed. Please revise the plan before approving it again."
@@ -151,6 +180,12 @@ def plan(state: ChatState) -> dict:
     deferred = tasks[batch_size:] if not review else []
     if not review:
         tasks = tasks[:batch_size]
+    if approved:
+        approval_mode = "user_approved"
+    elif state.get("require_review"):
+        approval_mode = "review_required"
+    else:
+        approval_mode = "automatic_offline"
     return {
         "tasks": tasks,
         "awaiting_approval": review,
@@ -160,18 +195,18 @@ def plan(state: ChatState) -> dict:
         "retrieval_trace": {
             "route": planned.route,
             "workflow": WORKFLOW_VERSION,
-            "approval_mode": "user_approved"
-            if approved
-            else "review_required"
-            if state.get("require_review")
-            else "automatic_offline",
+            "approval_mode": approval_mode,
             "planned_task_count": len(planned.tasks),
         },
     }
 
 
-def after_plan(state: ChatState) -> str:
-    """Clarify unresolved requests before spending time searching or answering."""
+def choose_route_after_planning(state: ChatState) -> str:
+    """Choose whether the graph can search or must return a clarification/approval request.
+
+    This conditional edge prevents retrieval and generation from running before the
+    question scope is ready.
+    """
     return (
         "format_response"
         if state.get("clarification") or state.get("awaiting_approval")
@@ -179,14 +214,23 @@ def after_plan(state: ChatState) -> str:
     )
 
 
-def retrieve(state: ChatState) -> dict:
-    """Run the same search for each task, sharing a bounded context across tasks."""
+def retrieve_task_evidence(state: ChatState) -> dict:
+    """Retrieve evidence for each task and share one context budget across the tasks.
+
+    Take passages in turns so one task does not consume all available space. Keep
+    shared passages once while recording every task they address, then assign
+    citation labels and collect retrieval diagnostics.
+    """
     started = perf_counter()
     tasks = state["tasks"]
     groups, runs = [], []
     for task in tasks:
         trace: dict = {"capture_evidence": state.get("capture_evidence", False)}
-        groups.append(search(task["question"], paper=task["paper"], diagnostics=trace))
+        groups.append(
+            retrieve_relevant_passages(
+                task["question"], paper=task["paper"], diagnostics=trace
+            )
+        )
         runs.append({"task": task, "trace": trace})
     # A sub-question phrased unlike the paper can score below the threshold even when
     # its siblings found evidence; keep its two best passages instead of dropping it.
@@ -217,7 +261,7 @@ def retrieve(state: ChatState) -> dict:
             evidence[row["id"]] = {**row, "task_ids": [task_id]}
             remaining -= len(row["content"])
             spent[task_id] += len(row["content"])
-    passages = label_evidence(list(evidence.values()))
+    passages = assign_citation_labels(list(evidence.values()))
     trace = {**state["retrieval_trace"], "tasks": runs, "evidence_count": len(passages)}
     for field in ("candidate_sources", "reranked_sources"):
         trace[field] = sorted(
@@ -238,19 +282,27 @@ def retrieve(state: ChatState) -> dict:
     }
 
 
-def after_retrieval(state: ChatState) -> str:
-    """Skip generation entirely when no evidence survived retrieval."""
+def choose_route_after_retrieval(state: ChatState) -> str:
+    """Generate an answer only when retrieval returned evidence.
+
+    An empty evidence list goes directly to response formatting, which returns an
+    explicit no-evidence response without asking Gemma to guess.
+    """
     return "generate" if state["evidence"] else "format_response"
 
 
-def generate_answer(state: ChatState) -> dict:
-    """Generate a structured draft using the original question and grouped evidence."""
+def generate_answer_draft(state: ChatState) -> dict:
+    """Ask Gemma for factual claims using the question, short history and selected evidence.
+
+    Store the structured draft in graph state and record generation time.
+    Verification runs next before any claims are shown to the user.
+    """
     started = perf_counter()
     history = [
         {"role": item["role"], "content": item["content"][:500]}
         for item in state.get("history", [])[-2:]
     ]
-    draft, consistency_report = draft_answer(
+    draft = generate_grounded_draft(
         state["message"], history, state["evidence"], state["tasks"]
     )
     return {
@@ -260,20 +312,28 @@ def generate_answer(state: ChatState) -> dict:
     }
 
 
-def verify(state: ChatState) -> dict:
-    """Check source support and declared coverage without another model call."""
+def verify_answer_draft(state: ChatState) -> dict:
+    """Check the draft's sources, quotes, numbers and task associations in Python.
+
+    Store accepted claims and missing tasks for response formatting. This uses no
+    additional model call and does not establish whether every paraphrase is
+    logically supported.
+    """
     started = perf_counter()
-    checked = verify_claims(
-        state["draft"], state["evidence"], state["tasks"], question=state["message"]
-    )
+    checked = verify_answer_claims(state["draft"], state["evidence"], state["tasks"])
     return {
         "verification": checked,
         "timings": {**state["timings"], "verification": perf_counter() - started},
     }
 
 
-def format_response(state: ChatState) -> dict:
-    """Build every graph outcome in one place while retaining the browser contract."""
+def build_chat_response(state: ChatState) -> dict:
+    """Convert the graph's current outcome into one browser-compatible response.
+
+    Handle clarification, plan approval, missing evidence or verified claims. If an
+    execution batch leaves tasks unfinished, attach a new proposal so the user can
+    continue instead of silently losing those tasks.
+    """
     if state.get("clarification"):
         result = {
             "kind": "answer",
@@ -290,7 +350,7 @@ def format_response(state: ChatState) -> dict:
             "sources": [],
             "claims": [],
         }
-        result["plan"] = review_plan(
+        result["plan"] = create_plan_proposal(
             state["message"], state["tasks"], state["retrieval_trace"]["route"]
         )
         result["answer"] += "\n\n" + "\n".join(
@@ -299,15 +359,12 @@ def format_response(state: ChatState) -> dict:
             for i, task in enumerate(state["tasks"])
         )
     elif not state.get("evidence"):
-        # Same wording as every other abstention so graders read it as "I don't know".
-        result = abstention(NOT_IN_DOCUMENTS)
+        result = build_abstention_response(
+            "No matching research-paper evidence was found for this question."
+        )
     else:
-        result = format_answer(
-            state["draft"],
-            state["verification"],
-            state["evidence"],
-            state["tasks"],
-            consistency_report=state.get("consistency_report"),
+        result = format_verified_answer(
+            state["draft"], state["verification"], state["evidence"], state["tasks"]
         )
     if state.get("deferred_tasks"):
         if not state.get("evidence"):
@@ -318,7 +375,7 @@ def format_response(state: ChatState) -> dict:
             f"\n\nThis response covers one execution batch. {len(state['deferred_tasks'])} search tasks remain; approve the next batch to continue."
         )
         result["status"] = "partial" if result.get("claims") else result["status"]
-        result["plan"] = review_plan(
+        result["plan"] = create_plan_proposal(
             state["message"], state["deferred_tasks"], state["retrieval_trace"]["route"]
         )
         result["answer"] += "\n\nRemaining tasks:\n" + "\n".join(
@@ -329,24 +386,37 @@ def format_response(state: ChatState) -> dict:
     return {"result": result}
 
 
-def review_plan(question: str, tasks: list[dict], route: str) -> dict:
-    """Give each reviewable proposal a new token tied to its exact saved content."""
-    return {"plan_id": new_id(), "question": question, "tasks": tasks, "route": route}
+def create_plan_proposal(question: str, tasks: list[dict], route: str) -> dict:
+    """Attach a new ID to the exact question, task list and route proposed for review.
+
+    The API saves this proposal and checks its ID on approval so an outdated browser
+    action cannot execute a different plan.
+    """
+    return {
+        "plan_id": create_record_id(),
+        "question": question,
+        "tasks": tasks,
+        "route": route,
+    }
 
 
+# Each node returns updates to ChatState; conditional edges choose the next node.
+# Plan -> clarify/review OR retrieve -> no-evidence response OR generate -> verify.
 workflow = StateGraph(ChatState)
-workflow.add_node("plan", plan)
-workflow.add_node("retrieve", retrieve)
-workflow.add_node("generate", generate_answer)
-workflow.add_node("verify", verify)
-workflow.add_node("format_response", format_response)
+workflow.add_node("plan", plan_search_tasks)
+workflow.add_node("retrieve", retrieve_task_evidence)
+workflow.add_node("generate", generate_answer_draft)
+workflow.add_node("verify", verify_answer_draft)
+workflow.add_node("format_response", build_chat_response)
 workflow.add_edge(START, "plan")
 workflow.add_conditional_edges(
-    "plan", after_plan, {name: name for name in ("retrieve", "format_response")}
+    "plan",
+    choose_route_after_planning,
+    {name: name for name in ("retrieve", "format_response")},
 )
 workflow.add_conditional_edges(
     "retrieve",
-    after_retrieval,
+    choose_route_after_retrieval,
     {name: name for name in ("generate", "format_response")},
 )
 workflow.add_edge("generate", "verify")
@@ -355,7 +425,7 @@ workflow.add_edge("format_response", END)
 chat_graph = workflow.compile()
 
 
-def answer_with_context(
+def answer_research_question(
     message: str,
     history: list[dict] | None = None,
     capture_evidence: bool = True,
@@ -364,7 +434,12 @@ def answer_with_context(
     force_review: bool = False,
     allow_clarification: bool = True,
 ) -> dict:
-    """Run the shared browser/evaluation workflow; reference answers never enter it."""
+    """Run the research graph and return the answer, evidence, trace and timings.
+
+    The browser can require plan review; offline evaluation uses automatic planning.
+    Only the question and allowed conversation/plan inputs enter this function, not
+    benchmark reference answers.
+    """
     started = perf_counter()
     state = chat_graph.invoke(
         {
@@ -385,10 +460,14 @@ def answer_with_context(
     }
 
 
-def list_papers() -> dict:
-    """Build the paper catalog directly from the index without a model call."""
+def build_paper_catalog_response() -> dict:
+    """Build the /papers answer from indexed document metadata.
 
-    papers = source_rows()
+    Return titles and source links directly, avoiding retrieval or a model-generated
+    guess about which papers exist.
+    """
+
+    papers = list_indexed_papers()
     titles = "\n".join(row["title"] for row in papers)
     sources = [
         {
@@ -409,14 +488,20 @@ def list_papers() -> dict:
     }
 
 
-def respond(message: str, history: list[dict], force_review: bool = False) -> dict:
-    """Route explicit commands first, then pass questions to the research graph."""
+def handle_chat_message(
+    message: str, history: list[dict], force_review: bool = False
+) -> dict:
+    """Send /papers and /quiz commands to their handlers, otherwise run the research graph.
+
+    Browser questions require review for complex plans. Remove raw evidence bodies
+    from the browser response while retaining the answer and citation links.
+    """
 
     if message.strip().casefold() == "/papers":
-        return list_papers()
+        return build_paper_catalog_response()
     if message.strip().startswith("/quiz"):
-        return make_quiz(parse_quiz_command(message))
-    result = answer_with_context(
+        return create_and_save_quiz(parse_quiz_command(message))
+    result = answer_research_question(
         message,
         history,
         capture_evidence=False,

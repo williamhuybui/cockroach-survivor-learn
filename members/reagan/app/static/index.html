@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- Page structure for app.js: IDs connect controls to API calls and rendered results. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -9,6 +10,7 @@
 </head>
 <body>
   <div id="workspace" class="workspace">
+    <!-- Saved conversation navigation; app.js fills the history list from FastAPI. -->
     <aside id="sidebar">
       <div class="brand"><span class="brand-mark" aria-hidden="true">▲</span>Team Knowledge</div>
       <button id="new-chat" class="new-chat">＋ New chat</button>
@@ -20,6 +22,7 @@
       </footer>
     </aside>
 
+    <!-- Chat messages, plan approval controls and question composer live here. -->
     <main>
       <header>
         <button id="toggle-sidebar" class="icon" aria-label="Toggle conversation sidebar">☰</button>
@@ -46,6 +49,7 @@
     </main>
   </div>
 
+  <!-- Reused for daily/custom quiz questions and server-graded results. -->
   <dialog id="quiz-dialog" aria-labelledby="quiz-title">
     <div class="modal-header"><div><h2 id="quiz-title">Daily Challenge</h2><p id="quiz-subtitle">One question from your team's knowledge</p></div><button id="close-quiz" class="icon" aria-label="Close quiz">×</button></div>
     <p id="quiz-error" role="alert"></p>
