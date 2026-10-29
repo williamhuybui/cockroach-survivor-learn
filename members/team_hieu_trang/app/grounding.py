@@ -1,72 +1,120 @@
-"""Generate evidence-based answer claims and check their references before display.
+"""Generate one answer per requested detail and compute completeness in Python.
 
-Gemma proposes claims with quotes, source labels and task IDs. Python checks that
-those references and numbers occur in the supplied evidence. Passing these checks
-does not prove a quote supports every interpretation; human evaluation still checks
-factual support.
+Gemma supplies explicit availability, plain answers and source labels for each
+requested detail. Citation, task scope and number checks cannot prove semantic support.
+They run automatically; no human review is required to produce an answer.
 """
 
 import re
+import unicodedata
 from typing import Literal
 
-from pydantic import BaseModel, Field, StrictInt
+from pydantic import BaseModel, Field, create_model
 
+from .answer_scope import check_explicit_answer_scope
 from .llm import generate_from_evidence
 
 
-# Gemma proposes one statement with a quotation, source label and task indexes.
-# Verification checks these references before the statement can appear in an answer.
-class SupportedClaim(BaseModel):
-    """One factual statement and an exact quote from one retrieved passage."""
+class DetailAnswer(BaseModel):
+    """One requested detail's availability, answer text and supplied source labels."""
 
-    text: str = Field(min_length=1, max_length=1000)
-    source_id: str
-    quote: str = Field(min_length=8, max_length=1500)
-    task_ids: list[StrictInt] = Field(default_factory=list)
+    availability: Literal["available", "unavailable"] = Field(
+        description="Use available only when this requested fact is supported; otherwise unavailable."
+    )
+    source_ids: list[str] = Field(
+        max_length=10,
+        description="Supporting supplied labels, for example ['S1']. Select sources for this requested detail only. Put citations here, not inside answer.",
+    )
+    answer: str = Field(
+        max_length=2500,
+        description="ONLY the requested value, names or explanation, supported by the selected sources. Do not write missing-information sentences or related background.",
+    )
 
 
-# This is Gemma's structured draft, not the final verified response.
-# Its claims and reported gaps are checked before formatting the user-facing answer.
 class DraftAnswer(BaseModel):
-    """An answer may be complete, partial, or unavailable in the evidence."""
+    """Answers in requested order; Python computes the overall response status."""
 
-    status: Literal["answered", "partial", "abstained"]
-    claims: list[SupportedClaim] = Field(default_factory=list, max_length=15)
-    missing_information: list[str] = Field(default_factory=list, max_length=10)
+    answers: list[DetailAnswer] = Field(
+        default_factory=list,
+        description="One answer/source record per requested detail, in its original order.",
+    )
 
 
-def normalize_quote_text(text: str) -> str:
-    """Normalize Unicode typography and whitespace before comparing quotations.
+def normalize_evidence_text(text: str) -> str:
+    """Join PDF word wrapping and normalize typography before checking source text."""
+    text = unicodedata.normalize("NFKC", text)
+    # Rejoin lowercase word continuations, retaining hyphens before capitals/digits.
+    text = re.sub(r"(?<=\w)-\s*\n\s*(?=[a-z])", "", text)
+    text = re.sub(r"-\s*\n\s*(?=\w)", "-", text)
+    return " ".join(text.split())
 
-    This tolerates PDF spacing and joined-letter characters while still requiring
-    the quoted words to occur in the evidence.
+
+def extract_numbers(text: str) -> set[str]:
+    """Treat numeric forms such as 10,000 and 10000 consistently."""
+    text = re.sub(r"(?<=\d),(?=\d)", "", normalize_evidence_text(text))
+    return set(re.findall(r"\d+(?:\.\d+)?", text))
+
+
+def check_requested_currency(question: str, answer: str, evidence: str) -> str:
+    """Check explicitly requested currency against the answer and cited evidence.
+
+    For example, a computation measured in hours cannot answer a request for
+    dollars. This is only a unit check; it does not establish semantic correctness.
     """
-    import unicodedata
-
-    return " ".join(unicodedata.normalize("NFKC", text).split())
+    # Apply this only to requests for a monetary amount, not questions about a
+    # currency or symbol itself. Other units and general facts keep their checks.
+    money_terms = {
+        "amount",
+        "budget",
+        "charge",
+        "cost",
+        "costs",
+        "expense",
+        "expenses",
+        "fee",
+        "fees",
+        "funding",
+        "income",
+        "investment",
+        "paid",
+        "pay",
+        "payment",
+        "payments",
+        "price",
+        "prices",
+        "profit",
+        "revenue",
+        "salary",
+        "spend",
+        "spent",
+        "value",
+        "worth",
+    }
+    words = set(re.findall(r"\b[a-z]+\b", question.casefold()))
+    if not money_terms.intersection(words) and "how much" not in question.casefold():
+        return ""
+    currencies = (
+        (r"\b(?:usd|dollars?)\b|\$", "dollars"),
+        (r"\b(?:eur|euros?)\b|€", "euros"),
+        (r"\b(?:jpy|yen)\b|¥", "yen"),
+        (r"\b(?:gbp|pounds? sterling)\b|£", "pounds sterling"),
+    )
+    for pattern, label in currencies:
+        if re.search(pattern, question, re.IGNORECASE) and (
+            not re.search(pattern, answer, re.IGNORECASE)
+            or not re.search(pattern, evidence, re.IGNORECASE)
+        ):
+            return f"The answer and cited evidence do not both state the requested currency: {label}."
+    return ""
 
 
 def build_abstention_response(reason: str) -> dict:
-    """Build a standard response explaining why a supported answer is unavailable.
-
-    Return no claims or sources so callers do not accidentally present an
-    unsupported answer as verified.
-    """
-    return {
-        "kind": "answer",
-        "status": "abstained",
-        "answer": reason,
-        "sources": [],
-        "claims": [],
-    }
+    """Return an honest unavailable answer without attributed sources."""
+    return {"kind": "answer", "status": "abstained", "answer": reason, "sources": []}
 
 
 def build_source_citations(evidence: list[dict]) -> list[dict]:
-    """Select the source label, paper title, link and location for display.
-
-    Keep passage bodies in the evidence used for generation and evaluation rather
-    than repeating them in the citation list.
-    """
+    """Build source cards from stored metadata rather than model-written links."""
     return [
         {
             key: row[key]
@@ -77,136 +125,253 @@ def build_source_citations(evidence: list[dict]) -> list[dict]:
     ]
 
 
-def verify_answer_claims(
-    draft: DraftAnswer, evidence: list[dict], tasks: list[dict]
-) -> dict:
-    """Reject claims with invalid source labels, missing quotes, new numbers or wrong task scope.
+def find_literal_list_source(
+    answer: str, task: dict, task_index: int, evidence: list[dict], question: str
+) -> str | None:
+    """Find a same-task passage that contains every exact item in a name list.
 
-    Return accepted claims and the tasks they declare coverage for. These are
-    text/reference checks: they cannot prove that a paraphrase follows from its
-    quotation.
+    This can repair a misplaced citation, but matching names does not prove that
+    the passage supports the answer's meaning or that the list is complete.
     """
-    passages = {row["id"]: normalize_quote_text(row["content"]) for row in evidence}
+    items = [item.strip() for item in answer.strip().rstrip(".").split(",")]
+    if len(items) < 2 or any(
+        not re.fullmatch(r"[\w.+/-]+(?:\s*\([\w.+/-]+\))?", item)
+        for item in items
+    ):
+        return None
+
+    paper = task.get("paper")
+    allowed_papers = paper if isinstance(paper, list) else [paper]
+    for row in evidence:
+        if task_index not in row.get("task_ids", []):
+            continue
+        if paper and row.get("title") not in allowed_papers:
+            continue
+        reason, eligible = check_explicit_answer_scope(
+            task["question"], [row["content"]], question
+        )
+        if reason or check_requested_currency(task["question"], answer, eligible):
+            continue
+        text = normalize_evidence_text(eligible).casefold()
+        if all(
+            re.search(
+                r"(?<!\w)" + re.escape(normalize_evidence_text(item).casefold()) + r"(?!\w)",
+                text,
+            )
+            for item in items
+        ):
+            return row["id"]
+    return None
+
+
+def generate_grounded_draft(
+    question: str, evidence: list[dict], tasks: list[dict]
+) -> DraftAnswer:
+    """Ask Gemma once for one small record per requested detail, including missing ones."""
+    schema = create_model(
+        "RequestedDetailAnswers",
+        __base__=DraftAnswer,
+        answers=(
+            list[DetailAnswer],
+            Field(
+                min_length=len(tasks),
+                max_length=len(tasks),
+                description="One record per requested detail, in order. Every record must declare available or unavailable; do not use null slots.",
+            ),
+        ),
+    )
+    return generate_from_evidence(
+        schema,
+        "Return exactly one record per requested detail, in the same order. "
+        "Answer each requested detail in its own record; do not repeat answers to "
+        "other details. For each detail, cite only its allowed_source_ids and use only passages "
+        "associated with that task and requested paper. "
+        "Every record must declare availability. For unavailable details use answer='' and source_ids=[]. "
+        "A detail marked scope=unresolved must be unavailable; do not borrow another task's evidence. "
+        "The passage must state the requested fact for the requested model, experiment and "
+        "training stage. Merely mentioning the topic is insufficient. A retrieved passage "
+        "is only a candidate and may not answer the task. Numerical settings require "
+        "explicit values; inference performance cannot supply pre-training settings. "
+        "If unsupported, mark that record unavailable. Do not replace "
+        "a missing fact with related background or a sentence saying it is missing. "
+        "Example: a passage stating that Model Delta has four routers does not state "
+        "its training duration. For a training-duration detail mark unavailable. "
+        "If supported, write only the direct answer, preserving concrete names, values and "
+        "variants, and put supporting labels in source_ids. No inline citations are needed. "
+        "Answer the requested detail directly and briefly. Omit unrelated background, "
+        "extra measurements, comparisons not requested and repeated conclusions. "
+        "Do not invent labels, links or pages. Do not add unrelated facts. No source quotations "
+        "are required. If sources conflict on the same setting, attribute the alternatives "
+        "without inventing a resolution. Do not infer table cells, figures or equations; "
+        "a caption supports its explicit words, but never claim to have read its cells. "
+        "Text marked structure_confidence=uncertain does not establish reading order. "
+        "Attribute learning recommendations to the guide. Catalog metadata does not establish findings.",
+        evidence,
+        {
+            "question": question,
+            "requested_details": [
+                dict(
+                    position=i,
+                    allowed_source_ids=[
+                        row["id"]
+                        for row in evidence
+                        if i in row.get("task_ids", range(len(tasks)))
+                        and (
+                            not task.get("paper")
+                            or row.get("title")
+                            in (
+                                task["paper"]
+                                if isinstance(task["paper"], list)
+                                else [task["paper"]]
+                            )
+                        )
+                    ],
+                    **task,
+                )
+                for i, task in enumerate(tasks)
+            ],
+        },
+    )
+
+
+def verify_answer_citations(
+    draft: DraftAnswer, evidence: list[dict], tasks: list[dict], question: str = ""
+) -> dict:
+    """Validate each detail independently so one source cannot cover unrelated tasks.
+
+    Empty, omitted, duplicate-source and invalid records cannot make other details
+    complete. Numbers must occur in the cited passages, but their meaning still
+    requires semantic evaluation.
+    """
     sources = {row["id"]: row for row in evidence}
-    accepted, covered = [], set()
-    for claim in draft.claims:
-        # Reject unknown sources and quotes that do not occur in the passage.
-        source = sources.get(claim.source_id)
-        if (
-            source is None
-            or normalize_quote_text(claim.quote) not in passages[claim.source_id]
+    accepted, used, rejections = [], set(), []
+    for index, detail in enumerate(draft.answers):
+        if detail is None or detail.availability == "unavailable":
+            continue
+        reason = ""
+        if index >= len(tasks):
+            reason = "Unexpected answer beyond the requested details."
+        elif tasks[index].get("scope") == "unresolved":
+            reason = "The requested paper identity was not resolved."
+        elif detail.answer.strip().strip("\"'").casefold() in ("", "null"):
+            continue
+        ids = set(detail.source_ids)
+        if not reason and not ids:
+            reason = "This detail has no source citation."
+        elif not reason and not ids <= sources.keys():
+            reason = "Unknown source citation: " + ", ".join(
+                sorted(ids - sources.keys())
+            )
+        elif not reason and any(
+            index not in sources[label].get("task_ids", range(len(tasks)))
+            or (
+                tasks[index].get("paper")
+                and sources[label].get("title")
+                not in (
+                    tasks[index]["paper"]
+                    if isinstance(tasks[index]["paper"], list)
+                    else [tasks[index]["paper"]]
+                )
+            )
+            for label in ids
         ):
+            reason = "A cited passage is outside this detail's task or paper scope."
+        if not reason:
+            reason, supporting_text = check_explicit_answer_scope(
+                tasks[index]["question"],
+                [sources[label]["content"] for label in ids],
+                question if len(tasks) == 1 else "",
+            )
+        if not reason:
+            reason = check_requested_currency(
+                tasks[index]["question"], detail.answer, supporting_text
+            )
+        if not reason:
+            text = detail.answer
+            # Ignore any redundant inline labels; Python renders validated citations.
+            inline = set(re.findall(r"\bS\d+\b", text))
+            if inline - ids:
+                reason = "Inline citation does not match the supplied source labels."
+            text = re.sub(r"\[[^\]]*\bS\d+\b[^\]]*\]", "", text).strip()
+            text = re.sub(r"(?m)^\s*\d+[.)]\s+", "", text)
+            if not text.strip():
+                reason = "This detail contains no answer text."
+            unsupported = extract_numbers(text) - extract_numbers(supporting_text)
+            if unsupported:
+                alternative = None
+                if not reason:
+                    alternative = find_literal_list_source(
+                        text, tasks[index], index, evidence,
+                        question if len(tasks) == 1 else "",
+                    )
+                if alternative:
+                    ids = {alternative}
+                else:
+                    reason = "Numbers absent from the cited passages: " + ", ".join(
+                        sorted(unsupported)
+                    )
+        if reason:
+            rejections.append({"detail_index": index, "reason": reason})
             continue
-        # Citation labels belong in source_id, not inside the claim's text.
-        if re.search(r"\bS\d+\b", claim.text):
-            continue
-        # Every number in the claim must also appear in its supporting quote.
-        claim_numbers = set(re.findall(r"\d+(?:\.\d+)?", claim.text))
-        quote_numbers = set(re.findall(r"\d+(?:\.\d+)?", claim.quote))
-        if not claim_numbers <= quote_numbers:
-            continue
-        # A claim can cover only tasks associated with its actual source passage.
-        ids = set(claim.task_ids)
-        if not ids and len(tasks) == 1:
-            ids = {0}
-        allowed_tasks = set(source.get("task_ids", range(len(tasks))))
-        if not ids or not ids <= allowed_tasks:
-            continue
-        if any(
-            i < 0
-            or i >= len(tasks)
-            or (tasks[i].get("paper") and source.get("title") != tasks[i]["paper"])
-            for i in ids
-        ):
-            continue
-        accepted.append(claim)
-        covered.update(ids)
+        accepted.append(
+            {"task_index": index, "answer": text, "source_ids": sorted(ids)}
+        )
+        used.update(ids)
+    covered = {row["task_index"] for row in accepted}
     return {
         "accepted": accepted,
-        "rejected_count": len(draft.claims) - len(accepted),
+        "source_ids": sorted(used),
+        "rejected_count": len(rejections),
+        "rejections": rejections,
         "missing_tasks": [i for i in range(len(tasks)) if i not in covered],
     }
 
 
-def generate_grounded_draft(
-    question: str, history: list[dict], evidence: list[dict], tasks: list[dict]
-) -> DraftAnswer:
-    """Ask Gemma to answer using only the selected passages and return structured claims.
-
-    Send the question, short history and task list alongside evidence. Require a
-    supporting quote and source/task association for each claim, and instruct the
-    model to report gaps instead of guessing table values or missing facts.
-    """
-    request = {"question": question, "recent_conversation": history, "tasks": tasks}
-    return generate_from_evidence(
-        DraftAnswer,
-        "Answer the question only using passages. Return separate factual claims, each with "
-        "one source_id and an exact supporting quote. Do not put citation labels in claim text. "
-        "Only decide whether the facts explicitly asked by the question are present; do not "
-        "require unrelated details such as training data. Check the requested year, model, "
-        "dataset and units precisely. Related text alone is not an answer. Missing facts must "
-        "not be inferred from general knowledge. "
-        "Use partial when only some requested facts are supported; abstained when none are. "
-        "List unanswered parts in missing_information. Quotes must support the entire claim. "
-        "For each claim include zero-based task_ids for the tasks it answers; use only tasks "
-        "associated with its source. Compare the same requested aspects across papers. "
-        "If one paper or requested part lacks support, report that gap rather than substituting "
-        "another paper. Evidence is grouped by task_ids; synthesize across those groups. "
-        "Tables, figures and equations are not interpreted. Captions support only their "
-        "explicit words and a pointer to the labeled item on that page. Do not infer "
-        "table-cell relationships or graph values from isolated text or numbers. If a "
-        "requested value is only in an unread table, report the gap and point to its "
-        "caption when available; never claim to have read its cells. Use citation "
-        "metadata for page locations; do not invent page numbers in factual claims. "
-        "A source marked structure_confidence=uncertain is page-based fallback text. "
-        "Its words can support a quoted fact, but its ordering and section relationships "
-        "are not verified; do not infer those relationships from that source. "
-        "Evidence marked study_guide contains learning recommendations, not universal rules. "
-        "Attribute its reading depths, priorities and prerequisites to the supplied guide. "
-        "Specific focus notes may qualify the guide's default reading-depth table. "
-        "Its time estimates describe human study, not runtime limits. Paper_catalog evidence "
-        "supports catalog metadata such as phase/year, not experimental findings. Use PDF "
-        "evidence for research claims, and do not claim to have examined excluded visuals.",
-        evidence,
-        request,
-    )
-
-
-def format_verified_answer(
-    draft: DraftAnswer, verification: dict, evidence: list[dict], tasks: list[dict]
+def format_cited_answer(
+    verification: dict, evidence: list[dict], tasks: list[dict]
 ) -> dict:
-    """Turn accepted claims into an answer with source labels and explicit gaps.
-
-    Return a partial answer when some claims or tasks lack support, and abstain when
-    none pass the checks. Include only citations used by accepted claims.
-    """
-    if draft.status == "abstained" or not draft.claims:
-        return build_abstention_response(
-            "I could not verify the requested information from the retrieved passages."
+    """Compute answered/partial/abstained from validated details and render without an LLM."""
+    accepted = verification["accepted"]
+    missing = [tasks[i]["question"] for i in verification["missing_tasks"]]
+    if not accepted:
+        result = build_abstention_response(
+            "I don't know - the retrieved documents do not provide a supported answer to the requested details."
         )
-    quoted_claims = verification["accepted"]
-    if not quoted_claims:
-        return build_abstention_response(
-            "I could not verify the answer's supporting quotations. Please narrow the question."
-        )
-    partial = (
-        draft.status == "partial"
-        or bool(missing)
-        or bool(verification.get("rejected_count"))
+    else:
+        paragraphs = []
+        for row in accepted:
+            # Only collapse exact repeated paragraphs within one task. Identical
+            # values from different tasks may represent different requested facts.
+            parts = list(dict.fromkeys(row["answer"].split("\n\n")))
+            answer = "\n\n".join(parts)
+            paragraphs.append(
+                answer + " " + " ".join(f"[{label}]" for label in row["source_ids"])
+            )
+        text = "\n\n".join(paragraphs)
+        if missing:
+            text += "\n\nMissing information:\n" + "\n".join(
+                f"- {part}" for part in missing
+            )
+        result = {
+            "kind": "answer",
+            "status": "partial" if missing else "answered",
+            "answer": text,
+            "sources": build_source_citations(
+                [row for row in evidence if row["id"] in verification["source_ids"]]
+            ),
+        }
+    by_task = {row["task_index"]: row for row in accepted}
+    result.update(
+        missing_tasks=missing,
+        detail_answers=[
+            {
+                "question": task["question"],
+                "availability": "available" if i in by_task else "unavailable",
+                "answer": by_task.get(i, {}).get("answer"),
+                "source_ids": by_task.get(i, {}).get("source_ids", []),
+            }
+            for i, task in enumerate(tasks)
+        ],
+        verification="per_detail_citation_scope_number_check",
     )
-    # Unanswered tasks stay in missing_tasks; coverage labels are too unreliable to print.
-    text = "\n\n".join(f"{claim.text} [{claim.source_id}]" for claim in quoted_claims)
-    used = {claim.source_id for claim in quoted_claims}
-    return {
-        "kind": "answer",
-        "status": "partial" if partial else "answered",
-        "answer": text,
-        "claims": [claim.model_dump() for claim in quoted_claims],
-        "sources": build_source_citations(
-            [row for row in evidence if row["id"] in used]
-        ),
-        "missing_tasks": missing,
-        # Lexical conflict hints stay available to reviewers, outside the answer text.
-        "consistency_notes": (consistency_report or {}).get("potential_conflicts", []),
-        "verification": "exact_quote_and_number_check",
-    }
+    return result

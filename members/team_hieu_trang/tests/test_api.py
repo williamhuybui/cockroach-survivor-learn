@@ -36,9 +36,9 @@ def test_chat_survives_refresh_and_can_be_deleted(monkeypatch):
     assert client.get("/api/sessions/browser-id").status_code == 404
 
 
-def test_manual_research_endpoints_are_removed():
-    """Questions enter through the browser chat route, not a separate filter API."""
-    for path in ("/team1/rag-aget", "/team1/rag-agent", "/api/quizzes"):
+def test_obsolete_endpoints_are_removed():
+    """Keep the old typo and separate quiz-creation endpoint unavailable."""
+    for path in ("/team1/rag-aget", "/api/quizzes"):
         response = client.post(path, json={"query": "Explain attention"})
         assert response.status_code == 404
 

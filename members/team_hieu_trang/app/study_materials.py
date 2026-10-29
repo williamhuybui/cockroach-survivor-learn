@@ -70,6 +70,9 @@ def load_paper_catalog(sources: dict[str, dict] | None = None) -> list[dict]:
             "index.csv needs #, Phase, Title, Year, arXiv link and File columns"
         )
     catalog, seen_numbers, seen_files = [], set(), set()
+    # Author names are collected from the arXiv IDs already present in index.csv.
+    author_file = Path(__file__).with_name("catalog_authors.json")
+    authors = json.loads(author_file.read_text(encoding="utf-8")) if author_file.exists() else {}
     for row in rows:
         number, year = int(row["#"]), int(row["Year"])
         filename = row["File"].strip()
@@ -95,6 +98,7 @@ def load_paper_catalog(sources: dict[str, dict] | None = None) -> list[dict]:
                 "phase": row["Phase"].strip(),
                 "year": year,
                 "arxiv_url": row["arXiv link"].strip(),
+                "authors": authors.get(row["arXiv link"].strip().rstrip("/").rsplit("/", 1)[-1], []),
                 "pdf_filename": filename,
             }
         )
@@ -118,12 +122,13 @@ def load_paper_catalog(sources: dict[str, dict] | None = None) -> list[dict]:
             continue
         # Accept single paper numbers and ranges such as 31–38 in the Papers cell.
         labels = re.findall(r"\d+(?:\s*[–-]\s*\d+)?", cells[1])
+        ranges = [
+            [int(value) for value in re.split(r"\s*[–-]\s*", label)]
+            for label in labels
+        ]
         for paper in catalog:
-            for label in labels:
-                bounds = [int(value) for value in re.split(r"\s*[–-]\s*", label)]
-                if bounds[0] <= paper["paper_number"] <= bounds[-1]:
-                    paper.update(reading_depth=cells[0], reading_reason=cells[2])
-                    break
+            if any(bounds[0] <= paper["paper_number"] <= bounds[-1] for bounds in ranges):
+                paper.update(reading_depth=cells[0], reading_reason=cells[2])
     return catalog
 
 

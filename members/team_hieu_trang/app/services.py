@@ -9,23 +9,24 @@ handle_chat_message().
 import json
 from time import perf_counter
 from typing import TypedDict
-from typing import NotRequired
 
 from langgraph.graph import END, START, StateGraph
 
 from .db import create_record_id, open_database
 from .grounding import (
-    NOT_IN_DOCUMENTS,
     DraftAnswer,
     build_abstention_response,
     build_source_citations,
-    format_verified_answer,
+    format_cited_answer,
     generate_grounded_draft,
-    verify_answer_claims,
+    verify_answer_citations,
 )
 from .llm import generate_from_evidence
 from .paper_store import list_indexed_papers
-from .question_planning import QuestionPlan, plan_question_tasks
+from .question_planning import (
+    QuestionPlan,
+    plan_question_tasks,
+)
 from .quiz_validation import (
     QuizContent,
     QuizRequest,
@@ -69,7 +70,6 @@ def generate_quiz_content(request: QuizRequest, evidence: list[dict]) -> dict:
         "an explanation, and source_ids for each question. Do not invent facts.",
         evidence,
         {"topic": request.topic},
-        DEFAULT_OUTPUT_TOKENS,  # Up to ten questions with explanations need a longer output.
     )
     if len(quiz.questions) != request.count:
         raise ValueError("Wrong question count returned; try fewer questions")
@@ -105,9 +105,7 @@ def create_and_save_quiz(request: QuizRequest) -> dict:
     return {"kind": "quiz", "quiz_id": quiz_id, **hide_quiz_answer_key(payload)}
 
 
-WORKFLOW_VERSION = "reviewed-plan-v3"
-# Each task still receives at least two short evidence windows within the shared budget.
-MAX_TASKS_PER_BATCH = 5
+WORKFLOW_VERSION = "separate-paper-search-v15"
 
 
 class ChatState(TypedDict, total=False):
@@ -134,8 +132,6 @@ class ChatState(TypedDict, total=False):
     awaiting_approval: bool
     deferred_tasks: list[dict]
     force_review: bool
-    allow_clarification: bool
-    consistency_report: NotRequired[dict]
 
 
 def plan_search_tasks(state: ChatState) -> dict:
@@ -143,7 +139,8 @@ def plan_search_tasks(state: ChatState) -> dict:
 
     Check named papers against the current index and request review when needed.
     Execute only a batch that fits the response context budget, retaining remaining
-    tasks for later approval. Return graph state updates and planning diagnostics.
+    tasks for later approval in the browser. Automatic callers receive explicit
+    gaps instead of a continuation proposal. Return planning diagnostics.
     """
     started = perf_counter()
     papers = list_indexed_papers()
@@ -154,17 +151,15 @@ def plan_search_tasks(state: ChatState) -> dict:
         if approved
         else plan_question_tasks(state["message"], state.get("history", []), papers)
     )
-    if planned.clarification and not state.get("allow_clarification", True):
-        # Unattended callers (API, evaluation) cannot answer a question back; search everything.
-        planned = QuestionPlan(tasks=[SearchTask(question=state["message"])])
-    if approved and any(
-        task.paper and task.paper not in indexed_titles for task in planned.tasks
-    ):
-        planned = QuestionPlan(
-            clarification="The indexed papers changed. Please revise the plan before approving it again."
-        )
+    if approved:
+        for task in planned.tasks:
+            selected = [task.paper] if isinstance(task.paper, str) else task.paper or []
+            if not set(selected + task.candidate_papers) <= indexed_titles:
+                planned = QuestionPlan(
+                    clarification="The indexed papers changed. Please revise the plan before approving it again."
+                )
+                break
     tasks = [task.model_dump() for task in planned.tasks]
-
     review = (
         state.get("require_review", False)
         and not approved
@@ -175,11 +170,19 @@ def plan_search_tasks(state: ChatState) -> dict:
         )
     )
     # One response has a finite evidence window; keep larger plans for subsequent batches.
-    # Batches exist so a reviewer can approve the next one; unattended runs do every task.
-    batch_size = MAX_TASKS_PER_BATCH if state.get("require_review") else max(len(tasks), 1)
-    deferred = tasks[batch_size:] if not review else []
+    batch_size = max(1, CONTEXT_CHARACTERS // 2400)
+    deferred, executable = [], []
+    searches = 0
     if not review:
-        tasks = tasks[:batch_size]
+        for task in tasks:
+            if task.get("scope") == "unresolved":
+                executable.append(task)
+            elif searches < batch_size:
+                executable.append(task)
+                searches += 1
+            else:
+                deferred.append(task)
+        tasks = executable
     if approved:
         approval_mode = "user_approved"
     elif state.get("require_review"):
@@ -197,6 +200,12 @@ def plan_search_tasks(state: ChatState) -> dict:
             "workflow": WORKFLOW_VERSION,
             "approval_mode": approval_mode,
             "planned_task_count": len(planned.tasks),
+            "execution_task_limit": batch_size,
+            "executed_task_count": 0 if review or planned.clarification else searches,
+            "unresolved_task_count": sum(
+                task.get("scope") == "unresolved" for task in tasks
+            ),
+            "unexecuted_task_count": len(deferred),
         },
     }
 
@@ -222,29 +231,49 @@ def retrieve_task_evidence(state: ChatState) -> dict:
     citation labels and collect retrieval diagnostics.
     """
     started = perf_counter()
-    tasks = state["tasks"]
+    tasks = [dict(task) for task in state["tasks"]]
+    # For several parts of the same paper, the original request supplies any
+    # subject that a short model-generated task accidentally left out.
+    same_paper = (
+        len(tasks) > 1
+        and isinstance(tasks[0].get("paper"), str)
+        and all(task.get("paper") == tasks[0]["paper"] for task in tasks)
+    )
     groups, runs = [], []
     for task in tasks:
         trace: dict = {"capture_evidence": state.get("capture_evidence", False)}
-        groups.append(
-            retrieve_relevant_passages(
-                task["question"], paper=task["paper"], diagnostics=trace
-            )
+        if task.get("scope") == "unresolved":
+            groups.append([])
+            runs.append({"task": task, "trace": {**trace, "scope_unresolved": True}})
+            continue
+        query = task["question"]
+        if same_paper and state.get("message") and tasks[0]["paper"] not in query:
+            query += f"\nQuestion context: {state['message']}"
+        passages = retrieve_relevant_passages(
+            query,
+            paper=task["paper"] or task.get("candidate_papers") or None,
+            diagnostics=trace,
+            **({"resolve_candidates": True} if task.get("candidate_papers") else {}),
         )
+        if task.get("candidate_papers"):
+            task["paper"] = trace.get("resolved_paper")
+            if not task["paper"]:
+                task["scope"] = "unresolved"
+                passages = []
+        if len(tasks) > 1 and passages:
+            # A shared budget may otherwise drop a strong keyword match behind
+            # several similar semantic hits. Keep MiniLM's top result first and
+            # give the best accepted BM25 match the next opportunity for context.
+            keyword = max(passages, key=lambda row: row.get("bm25_score", 0))
+            if keyword["id"] != passages[0]["id"] and keyword.get("bm25_score", 0) > 0:
+                passages = [passages[0], keyword] + [
+                    row for row in passages[1:] if row["id"] != keyword["id"]
+                ]
+        groups.append(passages)
         runs.append({"task": task, "trace": trace})
-    # A sub-question phrased unlike the paper can score below the threshold even when
-    # its siblings found evidence; keep its two best passages instead of dropping it.
-    if any(groups):
-        for task_id, group in enumerate(groups):
-            if not group:
-                task = tasks[task_id]
-                groups[task_id] = search(
-                    task["question"], paper=task["paper"],
-                    diagnostics=runs[task_id]["trace"], fallback=2,
-                )
     # Round-robin selection gives each task a chance before spending the budget.
     remaining, evidence = CONTEXT_CHARACTERS, {}
-    task_budget = CONTEXT_CHARACTERS // len(tasks)
+    task_budget = CONTEXT_CHARACTERS // max(1, sum(bool(group) for group in groups))
     spent = [0] * len(tasks)
     for position in range(max((len(group) for group in groups), default=0)):
         for task_id, group in enumerate(groups):
@@ -261,7 +290,10 @@ def retrieve_task_evidence(state: ChatState) -> dict:
             evidence[row["id"]] = {**row, "task_ids": [task_id]}
             remaining -= len(row["content"])
             spent[task_id] += len(row["content"])
-    passages = assign_citation_labels(list(evidence.values()))
+    # Keep each task's selected passages together before assigning source labels.
+    # Gemma sees contiguous labels for each task, while shared evidence stays once.
+    ordered = sorted(evidence.values(), key=lambda row: min(row["task_ids"]))
+    passages = assign_citation_labels(ordered)
     trace = {**state["retrieval_trace"], "tasks": runs, "evidence_count": len(passages)}
     for field in ("candidate_sources", "reranked_sources"):
         trace[field] = sorted(
@@ -276,6 +308,7 @@ def retrieve_task_evidence(state: ChatState) -> dict:
     ):
         trace[field] = sum(run["trace"].get(field, 0) for run in runs)
     return {
+        "tasks": tasks,
         "evidence": passages,
         "retrieval_trace": trace,
         "timings": {**state.get("timings", {}), "retrieval": perf_counter() - started},
@@ -292,55 +325,60 @@ def choose_route_after_retrieval(state: ChatState) -> str:
 
 
 def generate_answer_draft(state: ChatState) -> dict:
-    """Ask Gemma for factual claims using the question, short history and selected evidence.
+    """Ask Gemma once for answers to the planner's standalone requested details.
 
     Store the structured draft in graph state and record generation time.
-    Verification runs next before any claims are shown to the user.
+    Citation checks run next before the answer is shown to the user.
     """
     started = perf_counter()
-    history = [
-        {"role": item["role"], "content": item["content"][:500]}
-        for item in state.get("history", [])[-2:]
-    ]
-    draft = generate_grounded_draft(
-        state["message"], history, state["evidence"], state["tasks"]
-    )
+    # The planner already resolved follow-ups into standalone detail questions.
+    draft = generate_grounded_draft(state["message"], state["evidence"], state["tasks"])
     return {
         "draft": draft,
         "timings": {**state["timings"], "generation": perf_counter() - started},
-        "consistency_report": consistency_report,
     }
 
 
 def verify_answer_draft(state: ChatState) -> dict:
-    """Check the draft's sources, quotes, numbers and task associations in Python.
-
-    Store accepted claims and missing tasks for response formatting. This uses no
-    additional model call and does not establish whether every paraphrase is
-    logically supported.
-    """
+    """Validate answer citations and numeric values once, without another model call."""
     started = perf_counter()
-    checked = verify_answer_claims(state["draft"], state["evidence"], state["tasks"])
+    checked = verify_answer_citations(
+        state["draft"], state["evidence"], state["tasks"], question=state["message"]
+    )
     return {
         "verification": checked,
         "timings": {**state["timings"], "verification": perf_counter() - started},
+        "retrieval_trace": {
+            **state.get("retrieval_trace", {}),
+            "citation_checks": {
+                "accepted_detail_count": len(checked["accepted"]),
+                "rejected_count": checked["rejected_count"],
+                "rejections": checked["rejections"],
+            },
+        },
     }
 
 
 def build_chat_response(state: ChatState) -> dict:
     """Convert the graph's current outcome into one browser-compatible response.
 
-    Handle clarification, plan approval, missing evidence or verified claims. If an
-    execution batch leaves tasks unfinished, attach a new proposal so the user can
-    continue instead of silently losing those tasks.
+    Browser requests can return clarification or an approval proposal. Automatic
+    requests return an answer, partial answer or abstention, including unfinished
+    tasks without asking for another turn.
     """
-    if state.get("clarification"):
+    interactive = state.get("require_review", False)
+    if state.get("clarification") and not interactive:
+        # An independent evaluation request has nobody available to resolve ambiguity.
+        result = build_abstention_response(
+            "I don't know - the requested paper or question scope could not be resolved from the indexed documents."
+        )
+        result["abstention_reason"] = "unresolved_scope"
+    elif state.get("clarification"):
         result = {
             "kind": "answer",
             "status": "clarification",
             "answer": state["clarification"],
             "sources": [],
-            "claims": [],
         }
     elif state.get("awaiting_approval"):
         result = {
@@ -348,39 +386,63 @@ def build_chat_response(state: ChatState) -> dict:
             "status": "awaiting_approval",
             "answer": "Please review this plan. Approve it to start searching, or describe what to revise.",
             "sources": [],
-            "claims": [],
         }
         result["plan"] = create_plan_proposal(
             state["message"], state["tasks"], state["retrieval_trace"]["route"]
         )
         result["answer"] += "\n\n" + "\n".join(
             f"{i + 1}. {task['question']}"
-            + (f" — {task['paper']}" if task.get("paper") else "")
+            + (f" â€” {task['paper']}" if task.get("paper") else "")
             for i, task in enumerate(state["tasks"])
         )
     elif not state.get("evidence"):
+        ambiguous = any(
+            run["trace"].get("scope_ambiguous")
+            for run in state.get("retrieval_trace", {}).get("tasks", [])
+        )
         result = build_abstention_response(
-            "No matching research-paper evidence was found for this question."
+            "Several indexed papers remain plausible; the evidence does not identify a single requested paper."
+            if ambiguous
+            else "No matching research-paper evidence was found for this question."
         )
     else:
-        result = format_verified_answer(
-            state["draft"], state["verification"], state["evidence"], state["tasks"]
+        result = format_cited_answer(
+            state["verification"], state["evidence"], state["tasks"]
         )
+    if not interactive and result["status"] == "abstained":
+        result["missing_tasks"] = [task["question"] for task in state.get("tasks", [])]
     if state.get("deferred_tasks"):
         if not state.get("evidence"):
             result["answer"] = (
                 "No matching evidence was found for the tasks in this execution batch."
             )
-        result["answer"] += (
-            f"\n\nThis response covers one execution batch. {len(state['deferred_tasks'])} search tasks remain; approve the next batch to continue."
-        )
-        result["status"] = "partial" if result.get("claims") else result["status"]
-        result["plan"] = create_plan_proposal(
-            state["message"], state["deferred_tasks"], state["retrieval_trace"]["route"]
-        )
-        result["answer"] += "\n\nRemaining tasks:\n" + "\n".join(
+        if interactive:
+            result["answer"] += (
+                f"\n\nThis response covers one execution batch. {len(state['deferred_tasks'])} search tasks remain; approve the next batch to continue."
+            )
+        else:
+            result["answer"] += (
+                "\n\nThe execution budget was reached. The following parts were not searched and are unanswered."
+            )
+        result["status"] = "partial" if result.get("sources") else result["status"]
+        if interactive:
+            result["plan"] = create_plan_proposal(
+                state["message"],
+                state["deferred_tasks"],
+                state["retrieval_trace"]["route"],
+            )
+        else:
+            result["unexecuted_tasks"] = [
+                task["question"] for task in state["deferred_tasks"]
+            ]
+            result["missing_tasks"] = list(
+                dict.fromkeys(
+                    result.get("missing_tasks", []) + result["unexecuted_tasks"]
+                )
+            )
+        result["answer"] += "\n\nUnfinished parts:\n" + "\n".join(
             f"{i + 1}. {task['question']}"
-            + (f" — {task['paper']}" if task.get("paper") else "")
+            + (f" â€” {task['paper']}" if task.get("paper") else "")
             for i, task in enumerate(state["deferred_tasks"])
         )
     return {"result": result}
@@ -432,11 +494,12 @@ def answer_research_question(
     require_review: bool = False,
     approved_plan: dict | None = None,
     force_review: bool = False,
-    allow_clarification: bool = True,
 ) -> dict:
     """Run the research graph and return the answer, evidence, trace and timings.
 
-    The browser can require plan review; offline evaluation uses automatic planning.
+    The browser can require plan review. With require_review=False, execute the
+    planned task batch automatically, abstain on unresolved scope and report any
+    parts beyond the execution budget without asking for approval or clarification.
     Only the question and allowed conversation/plan inputs enter this function, not
     benchmark reference answers.
     """
@@ -449,7 +512,6 @@ def answer_research_question(
             "require_review": require_review,
             "approved_plan": approved_plan,
             "force_review": force_review,
-            "allow_clarification": allow_clarification,
         }
     )
     return {

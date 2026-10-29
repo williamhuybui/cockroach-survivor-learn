@@ -18,7 +18,8 @@ def test_generic_dataset_does_not_leak_ground_truth(tmp_path, monkeypatch):
     )
     seen = []
 
-    def answer(question, history):
+    def answer(question, history, *, require_review):
+        assert require_review is False
         seen.append((question, history))
         return {"answer": "Cannot verify", "status": "abstained", "context": []}
 
@@ -36,7 +37,8 @@ def test_errors_are_saved_and_next_case_runs(tmp_path, monkeypatch):
     dataset = tmp_path / "cases.csv"
     dataset.write_text("id,question\na,fail\nb,pass\n")
 
-    def answer(question, history):
+    def answer(question, history, *, require_review):
+        assert require_review is False
         if question == "fail":
             raise RuntimeError("offline")
         return {"answer": "ok", "context": []}
@@ -65,7 +67,8 @@ def test_human_paper_scope_and_expected_behavior_are_scoring_only(
     )
     seen = []
 
-    def answer(question, history):
+    def answer(question, history, *, require_review):
+        assert require_review is False
         seen.append((question, history))
         return {
             "answer": "answer",
@@ -89,7 +92,7 @@ def test_resume_skips_completed_cases(tmp_path, monkeypatch):
     monkeypatch.setattr(
         evaluate,
         "answer_research_question",
-        lambda question, history: (
+        lambda question, history, **kwargs: (
             calls.append(question)
             or {"answer": "ok", "status": "answered", "context": []}
         ),
@@ -106,7 +109,8 @@ def test_resume_retries_a_previous_error(tmp_path, monkeypatch):
     output = tmp_path / "report.json"
     failing = True
 
-    def answer(question, history):
+    def answer(question, history, *, require_review):
+        assert require_review is False
         nonlocal failing
         if failing:
             failing = False
@@ -128,7 +132,11 @@ def test_max_cases_makes_resumable_batches(tmp_path, monkeypatch):
     monkeypatch.setattr(
         evaluate,
         "answer_research_question",
-        lambda question, history: {"answer": "ok", "status": "answered", "context": []},
+        lambda question, history, **kwargs: {
+            "answer": "ok",
+            "status": "answered",
+            "context": [],
+        },
     )
     first = evaluate.run_evaluation(dataset, output, max_cases=1)
     second = evaluate.run_evaluation(dataset, output, resume=True, max_cases=1)
@@ -144,7 +152,7 @@ def test_resume_rejects_changed_configuration(tmp_path, monkeypatch):
     monkeypatch.setattr(
         evaluate,
         "answer_research_question",
-        lambda *args: {"answer": "ok", "context": []},
+        lambda *args, **kwargs: {"answer": "ok", "context": []},
     )
     evaluate.run_evaluation(dataset, output)
     monkeypatch.setattr(evaluate, "WORKFLOW_VERSION", "changed")

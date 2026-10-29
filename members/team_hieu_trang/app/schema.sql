@@ -8,6 +8,18 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
+-- Local enrichment of the read-only CSV catalog. IDs come from the indexed papers.
+-- Refresh CSV/index fields without overwriting locally verified name aliases.
+CREATE TABLE IF NOT EXISTS paper_catalog (
+    document_id TEXT PRIMARY KEY,
+    paper_number INTEGER,
+    title TEXT NOT NULL,
+    pdf_filename TEXT NOT NULL,
+    phase TEXT NOT NULL DEFAULT '',
+    aliases TEXT NOT NULL DEFAULT '[]',
+    active INTEGER NOT NULL DEFAULT 1
+);
+
 -- One summary per indexing attempt: source/settings hashes, counts, outcome and times.
 -- These records explain how an index was built; they do not back up its vectors.
 CREATE TABLE IF NOT EXISTS index_runs (

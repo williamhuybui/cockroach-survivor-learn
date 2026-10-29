@@ -14,6 +14,7 @@ from .config import (
     EMBED_MODEL,
     MAX_CHUNK_CHARACTERS,
 )
+from .paper_catalog import INITIAL_ALIASES, load_local_aliases
 from .study_materials import load_paper_catalog
 
 COLLECTION_NAME = "research_papers"
@@ -52,12 +53,14 @@ def open_chunk_store():
     """
 
     CHROMA_PATH.mkdir(parents=True, exist_ok=True)
-    store = client().get_or_create_collection(
+    client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+    signature = build_index_signature()
+    store = client.get_or_create_collection(
         name=COLLECTION_NAME,
         embedding_function=None,
-        metadata={"hnsw:space": "cosine", "signature": build_index_signature()},
+        metadata={"hnsw:space": "cosine", "signature": signature},
     )
-    if store.metadata.get("signature") != build_index_signature():
+    if store.metadata.get("signature") != signature:
         raise ValueError(
             "Embedding or chunking settings changed. Run ingestion with --rebuild."
         )
@@ -89,6 +92,7 @@ def list_indexed_papers() -> list[dict]:
 
     records = open_chunk_store().get(include=["metadatas"])
     catalog = {row["pdf_filename"].casefold(): row for row in load_paper_catalog()}
+    aliases = load_local_aliases()
     sources = {}
     for metadata in records["metadatas"]:
         sources[metadata["document_id"]] = {
@@ -99,5 +103,10 @@ def list_indexed_papers() -> list[dict]:
             "url": metadata["source_url"],
             "indexed_at": metadata["indexed_at"],
             "active": True,
+            "aliases": list(
+                aliases.get(
+                    metadata["document_id"], INITIAL_ALIASES.get(metadata["title"], [])
+                )
+            ),
         }
     return sorted(sources.values(), key=lambda source: source["title"].casefold())

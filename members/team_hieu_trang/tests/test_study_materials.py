@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from answer_fixtures import cited_draft
 
 from app import (
     evaluate,
@@ -28,19 +29,12 @@ def study_files(tmp_path):
     """Create a tiny catalog and guide using the production manifest format."""
     catalog = tmp_path / "index.csv"
     catalog.write_text(
-        "#,Phase,Title,Year,arXiv link,File\n"
-        "9,Foundations,First Model,2020,https://example.org/a,09_First.pdf\n"
-        "42,Efficiency,Compact Model,2021,https://example.org/b,42_Compact.pdf\n"
-        "43,Efficiency,Other Model,2022,https://example.org/c,43_Other.pdf\n",
+        "#,Phase,Title,Year,arXiv link,File\n9,Foundations,First Model,2020,https://example.org/a,09_First.pdf\n42,Efficiency,Compact Model,2021,https://example.org/b,42_Compact.pdf\n43,Efficiency,Other Model,2022,https://example.org/c,43_Other.pdf\n",
         encoding="utf-8",
     )
     guide = tmp_path / "how_to_read_llm_papers.md"
     guide.write_text(
-        "# How to Read\n\n## Reading depth\n\n"
-        "| Depth | Papers | Why |\n|---|---|---|\n"
-        "| **Pass 3 (deep)** | 9 | Core idea |\n"
-        "| **Pass 2 (understand)** | 42–43 | Practical concepts |\n\n"
-        "## Prerequisites\n\nRead First Model before Compact Model.\n",
+        "# How to Read\n\n## Reading depth\n\n| Depth | Papers | Why |\n|---|---|---|\n| **Pass 3 (deep)** | 9 | Core idea |\n| **Pass 2 (understand)** | 42–43 | Practical concepts |\n\n## Prerequisites\n\nRead First Model before Compact Model.\n",
         encoding="utf-8",
     )
     manifest = study_materials.SOURCE_MANIFEST_PATH
@@ -59,7 +53,7 @@ def study_files(tmp_path):
         },
     ]
     manifest.write_text(json.dumps(rows), encoding="utf-8")
-    return catalog, guide, manifest
+    return (catalog, guide, manifest)
 
 
 def test_catalog_depths_are_loaded_from_guide_not_hardcoded(study_files):
@@ -153,6 +147,7 @@ def test_catalog_enriches_only_actual_indexed_papers(study_files, monkeypatch):
 def test_planner_receives_catalog_identity_and_reference_search_instructions(
     study_files, monkeypatch
 ):
+
     def plan(schema, instruction, payload):
         """Keep learning searches unscoped so guide evidence remains eligible."""
         assert "reading depth" in instruction and "paper=null" in instruction
@@ -207,6 +202,7 @@ def test_missing_or_deleted_study_sources_are_not_silently_reused(study_files):
     ],
 )
 def test_sync_downloads_the_two_supporting_sources(tmp_path, name, mime, export):
+
     class DriveFile(dict):
         """Capture downloads locally without authenticating to Google Drive."""
 
@@ -261,16 +257,8 @@ def test_guide_answer_passes_normal_quote_verification_and_cites_guide(
         """Generate a known supported claim without making an Ollama request."""
         assert "learning recommendations" in instruction
         assert evidence[0]["evidence_type"] == "study_guide"
-        return grounding.DraftAnswer(
-            status="answered",
-            claims=[
-                grounding.SupportedClaim(
-                    text="The guide recommends Pass 2 for Compact Model.",
-                    quote="The reading guide recommends: Pass 2 (understand).",
-                    source_id=evidence[0]["id"],
-                    task_ids=[0],
-                )
-            ],
+        return cited_draft(
+            f"The guide recommends Pass 2 for Compact Model. [{evidence[0]['id']}]"
         )
 
     monkeypatch.setattr(grounding, "generate_from_evidence", draft)

@@ -150,7 +150,7 @@ def test_grounded_prompt_distinguishes_captions_from_unread_cells(monkeypatch):
         assert "never claim to have read its cells" in instruction
         assert "Do not infer" in instruction
         assert "structure_confidence=uncertain" in instruction
-        return grounding.DraftAnswer(status="abstained")
+        return schema(answers=[])
 
     monkeypatch.setattr(grounding, "generate_from_evidence", generate)
-    grounding.generate_grounded_draft("What value is in Table 2?", [], [], [])
+    grounding.generate_grounded_draft("What value is in Table 2?", [], [])

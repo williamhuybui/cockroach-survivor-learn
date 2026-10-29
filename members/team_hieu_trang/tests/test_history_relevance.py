@@ -1,49 +1,41 @@
+"""Check bounded conversation input to the unified planner, not pronoun regexes."""
 
 import pytest
 
-from app.question_planning import check_history_relevance
+from app import question_planning
 
 
 @pytest.mark.parametrize(
-    "previous,current,expected",
-    [
-        (
-            "Explain RAG-Token.",
-            "How does it work?",
-            True,
-        ),
-        (
-            "Explain Transformers.",
-            "What is BM25?",
-            False,
-        ),
-        (
-            "Compare RAG-Token and RAG-Sequence.",
-            "Which one performs better?",
-            True,
-        ),
-        (
-            "Explain attention mechanisms.",
-            "What is the weather tomorrow?",
-            False,
-        ),
-        (
-            "Explain RAG-Sequence.",
-            "What are its limitations?",
-            True,
-        ),
-        (
-            "What is BM25?",
-            "Explain Transformer architecture.",
-            False,
-        ),
-    ],
+    "question",
+    ["How does it work?", "What about training time?", "Explain another model."],
 )
-def test_history_relevance(previous, current, expected):
-    history = [
-        {"role": "human", "content": previous},
+def test_planner_receives_bounded_history_for_context_resolution(monkeypatch, question):
+    """Implicit follow-ups and independent topics use the same understanding stage."""
+    captured = []
+
+    def plan(schema, instruction, payload):
+        """Only the planner decides whether previous topics resolve this request."""
+        captured.append(payload)
+        assert "ignore unrelated prior topics" in instruction
+        return schema(tasks=[{"question": question, "paper": None, "scope": "broad"}])
+
+    monkeypatch.setattr(question_planning, "request_structured_response", plan)
+    history = [{"role": "human", "content": str(i)} for i in range(10)]
+    question_planning.plan_question_tasks(question, history, [{"title": "A.pdf"}])
+    assert [row["content"] for row in captured[0]["recent_conversation"]] == [
+        str(i) for i in range(4, 10)
     ]
 
-    result = check_history_relevance(current, history)
 
-    assert result["use_history"] == expected
+def test_independent_question_has_no_previous_context(monkeypatch):
+    """The independent endpoint's empty history stays empty in planning."""
+
+    def plan(schema, instruction, payload):
+        """Verify that planning does not create hidden conversation state."""
+        assert payload["recent_conversation"] == []
+        return schema(
+            tasks=[{"question": payload["question"], "paper": None, "scope": "broad"}]
+        )
+
+    monkeypatch.setattr(question_planning, "request_structured_response", plan)
+    question_planning.plan_question_tasks("A new question?", [], [{"title": "A.pdf"}])

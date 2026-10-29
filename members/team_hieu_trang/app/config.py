@@ -22,8 +22,9 @@ CHAT_MODEL = os.getenv("CHAT_MODEL", "gemma3:4b")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "embeddinggemma")
 EMBED_DIM = int(os.getenv("EMBED_DIM", "768"))
 RERANK_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L6-v2")
-# A raw relevance score, not a probability; tune using reviewed paper questions.
-MIN_RERANK_SCORE = float(os.getenv("MIN_RERANK_SCORE", "0"))
+# Rank all candidates by default. A minimum is optional for offline comparisons.
+_min_rerank_score = os.getenv("MIN_RERANK_SCORE", "").strip()
+MIN_RERANK_SCORE = float(_min_rerank_score) if _min_rerank_score else None
 # Chunk size includes its repeated title/heading prefix; overlap repeats nearby text.
 MAX_CHUNK_CHARACTERS = 1_200
 CHUNK_OVERLAP_CHARACTERS = 120

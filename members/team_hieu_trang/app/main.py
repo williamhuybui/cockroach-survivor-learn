@@ -135,7 +135,36 @@ class ChatRequest(BaseModel):
         return self
 
 
-@app.post("/api/chat")
+class ResearchQuestion(BaseModel):
+    """Accept one independent Swagger question, without chat or approval state."""
+
+    # Require at least one non-whitespace character so blank requests are rejected.
+    question: str = Field(min_length=1, max_length=2000, pattern=r"\S")
+
+
+@app.post(
+    "/team1/rag-agent",
+    summary="Answer an independent question automatically",
+    description="Runs planning, retrieval and answer verification without approval or conversation history. Returns a final answer, partial answer or abstention.",
+)
+def handle_independent_question(body: ResearchQuestion):
+    """Run the evaluation flow directly from Swagger and return answer plus sources.
+
+    Use no saved conversation and never create a pending plan. The same graph
+    keeps the planner and grounding checks, with review explicitly disabled.
+    """
+    result = answer_research_question(
+        body.question, history=[], capture_evidence=False, require_review=False
+    )
+    return {
+        "answer": result["answer"],
+        "sources": list(
+            dict.fromkeys(source["title"] for source in result.get("sources", []))
+        ),
+    }
+
+
+@app.post("/api/chat", summary="Browser chat with conversation history and plan review")
 def handle_chat_request(body: ChatRequest):
     """Process a message, approval or revision and save the resulting conversation.
 
@@ -152,7 +181,8 @@ def handle_chat_request(body: ChatRequest):
         row = database.execute(
             "SELECT messages FROM chat_sessions WHERE id = ?", (session_id,)
         ).fetchone()
-        history = json.loads(row["messages"])
+        original_messages = row["messages"]
+        history = json.loads(original_messages)
         pending = database.execute(
             "SELECT * FROM pending_plans WHERE session_id = ?", (session_id,)
         ).fetchone()
@@ -219,9 +249,10 @@ def handle_chat_request(body: ChatRequest):
     human_text = "Approve plan" if body.action == "approve" else body.message
     updated = history + [{"role": "human", "content": human_text}, assistant_message]
     with open_database() as database:
+        # Requests may run together, but a stale answer must not overwrite newer history.
         saved = database.execute(
-            "UPDATE chat_sessions SET messages = ? WHERE id = ?",
-            (json.dumps(updated), session_id),
+            "UPDATE chat_sessions SET messages = ? WHERE id = ? AND messages = ?",
+            (json.dumps(updated), session_id, original_messages),
         )
         if saved.rowcount:
             database.execute(
@@ -233,7 +264,10 @@ def handle_chat_request(body: ChatRequest):
                     (session_id, result["plan"]["plan_id"], json.dumps(result["plan"])),
                 )
     if saved.rowcount == 0:
-        raise HTTPException(409, "This chat was deleted while the answer was generated")
+        raise HTTPException(
+            409,
+            "This chat changed or was deleted while the answer was generated. Reopen it and retry.",
+        )
     return {
         **result,
         "session_id": session_id,

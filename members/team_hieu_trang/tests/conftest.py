@@ -24,4 +24,3 @@ def local_storage(tmp_path, monkeypatch):
         tmp_path / "extraction_reports",
     )
     db.initialize_database()
-    retrieval.all_records.cache_clear()

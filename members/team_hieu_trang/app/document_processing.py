@@ -244,35 +244,139 @@ def extract_text_pages(
     return pages
 
 
-def styled_heading_lines(page) -> set[str]:
-    """Find bold or larger PDF lines so table numbers do not become headings."""
+def extract_fast_page(pdf, number: int) -> dict:
+    """Recover a failed neural page using the PDF's existing text layer.
 
-    lines = [
-        line
-        for block in page.get_text("dict")["blocks"]
-        for line in block.get("lines", [])
-    ]
-    sizes = Counter()
-    for line in lines:
-        for span in line["spans"]:
-            sizes[round(span["size"], 1)] += len(span["text"])
-    body_size = sizes.most_common(1)[0][0] if sizes else 0
-    # PyMuPDF uses bit 16 for bold. Weighting font sizes by text length finds
-    # the body style rather than a large title that occurs only once.
-    return {
-        clean_text("".join(span["text"] for span in line["spans"])).strip()
-        for line in lines
-        if any(
-            span["flags"] & 16 or span["size"] > body_size + 0.5
-            for span in line["spans"]
-        )
+    Ask PyMuPDF4LLM for text without neural layout, table reconstruction or image
+    processing. Heading guesses are disabled because this page will be stored
+    without section structure. Raw table text may remain; explicit caption labels
+    can still be recognized.
+    """
+
+    import pymupdf4llm
+
+    pymupdf4llm.use_layout(False)
+    page = pymupdf4llm.to_markdown(
+        pdf,
+        pages=[number],
+        hdr_info=False,
+        page_chunks=True,
+        detect_bg_color=False,
+        ignore_images=True,
+        ignore_graphics=True,
+        table_strategy=None,
+        show_progress=False,
+    )[0]
+    page["metadata"]["page_number"] = number + 1
+    page["page_boxes"] = identify_markdown_blocks(page["text"], number + 1)
+    return page
+
+
+def identify_markdown_blocks(text: str, page_number: int | None = None) -> list[dict]:
+    """Mark body text, explicit captions and heading lines in extracted Markdown.
+
+    Return character ranges into the unchanged text so later code can read each
+    block. Protect fenced code from being mistaken for headings or captions and
+    ignore numeric page headings. This supplies block metadata for the non-neural
+    extraction path.
+    """
+
+    boxes = []
+    position = 0
+    in_code = False
+    for paragraph in text.split("\n\n"):
+        content = paragraph.strip()
+        first_line = content.split("\n", 1)[0].lstrip("# ")
+        caption = CAPTION_LABEL_PATTERN.match(first_line) if not in_code else None
+        if caption and not content.startswith(("```", "~~~")):
+            prefix = "Table" if caption[1].lower() == "table" else "Figure"
+            boxes.append(
+                {
+                    "class": "caption",
+                    "pos": (position, position + len(paragraph)),
+                    "reference_label": f"{prefix} {caption[2]}",
+                }
+            )
+        else:
+            # Separate each heading line from body lines, even without a blank separator.
+            start = position
+            for line in paragraph.splitlines(keepends=True):
+                stripped = line.strip()
+                kind = "text"
+                if (
+                    not in_code
+                    and stripped.startswith("#")
+                    and stripped.lstrip("#").startswith(" ")
+                ):
+                    title = stripped.lstrip("# ").replace("**", "").strip()
+                    if page_number is not None and title == str(page_number):
+                        kind = "page-footer"
+                    elif (
+                        any(char.isalpha() for char in title)
+                        and len(title.split()) <= 16
+                        and len(title) <= 160
+                        and not title.endswith((".", ",", ";"))
+                    ):
+                        kind = (
+                            "title"
+                            if page_number == 1
+                            and not boxes
+                            and stripped.startswith("# ")
+                            else "section-header"
+                        )
+                if stripped:
+                    # Consecutive body lines form one paragraph so wrapping is preserved.
+                    if (
+                        kind == "text"
+                        and boxes
+                        and boxes[-1]["class"] == "text"
+                        and boxes[-1]["pos"][1] == start
+                    ):
+                        boxes[-1]["pos"] = (boxes[-1]["pos"][0], start + len(line))
+                    else:
+                        boxes.append({"class": kind, "pos": (start, start + len(line))})
+                if stripped.startswith(("```", "~~~")):
+                    in_code = not in_code
+                start += len(line)
+        position += len(paragraph) + 2
+    return boxes
+
+
+def save_extraction_report(path: Path, pages: list[dict], seconds: float) -> None:
+    """Write a per-PDF JSON record of extraction coverage and fallback reasons.
+
+    Save page times, methods and warning counts without copying passage text. The
+    path hash gives each PDF one report file that is replaced on its next
+    extraction.
+    """
+
+    PDF_EXTRACTION_REPORT_PATH.mkdir(parents=True, exist_ok=True)
+    identity = hashlib.sha256(str(path.resolve()).encode()).hexdigest()[:16]
+    report = {
+        "file": str(path.resolve()),
+        "extraction_profile": EXTRACTION_PROFILE,
+        "seconds": round(seconds, 2),
+        "pages": [page["metadata"] for page in pages],
+        "neural_pages": sum(
+            page["metadata"]["extraction_method"] == "neural_regions" for page in pages
+        ),
+        "fallback_pages": sum(
+            page["metadata"]["extraction_method"] == "fast_fallback" for page in pages
+        ),
     }
+    (PDF_EXTRACTION_REPORT_PATH / f"{identity}.json").write_text(
+        json.dumps(report, indent=2), encoding="utf-8"
+    )
 
 
-def paper_sections(
-    pages: list[ExtractedSection], styles: dict[str, set[str]] | None = None
-) -> list[ExtractedSection]:
-    """Keep a paper section together across pages and record its page span."""
+def group_layout_pages_into_sections(pages: list[dict]) -> list[ExtractedSection]:
+    """Collect each detected heading and its following text into a flat section.
+
+    Keep the current heading names and levels to build breadcrumbs such as Methods >
+    Training. A section can span pages, but its text is not copied into containing
+    sections. Clear the breadcrumb at uncertain fallback pages to avoid guessing
+    their structure.
+    """
 
     sections = []
     heading = ""
@@ -371,43 +475,72 @@ def paper_sections(
     save_current_section()
     return sections
 
-def extract_sections(path: Path) -> tuple[str, list[ExtractedSection]]:
-    """Read every PDF page; use section boundaries when confidently detected."""
 
-    if path.suffix.lower() != ".pdf":
-        raise ValueError("Only research PDF files are supported")
-    pages = []
-    styles = {}
-    with pymupdf.open(path) as pdf:
-        for number, page in enumerate(pdf, 1):
-            # Preserve the PDF's native order: geometric sorting can interleave columns.
-            text = clean_text(page.get_text("text")).strip()
-            if not text:
-                print(
-                    f"WARNING {path.name}, page {number}: no text; OCR is not configured"
-                )
-            pages.append(ExtractedSection(f"page {number}", text, "pdf-page"))
-            styles[f"page {number}"] = styled_heading_lines(page)
-    document_type = classify_document(path, pages)
-    if document_type == "sectioned_paper":
-        sections = paper_sections(pages, styles)
-        main_sections = [
-            section
-            for section in sections
-            if section.heading.casefold()
-            not in SPECIAL_HEADINGS | {"title and authors"}
-        ]
-        if len(main_sections) >= 2:
-            return document_type, sections
-    return "pdf_page_fallback", pages
+def read_detected_heading(
+    content: str, suggested_level: int | None = None
+) -> tuple[str, int]:
+    """Clean a detected heading and determine its nesting depth.
+
+    For example, 2.1 Training is level 2 even when it uses the same font as 2
+    Methods. Otherwise use the model's font-based level or Markdown heading depth.
+    This function interprets a heading already detected elsewhere.
+    """
+
+    line = content.strip()
+    # Markdown ## usually denotes a main section; supplied neural font levels take priority.
+    level = suggested_level or max(1, len(line) - len(line.lstrip("#")) - 1)
+    title = line.lstrip("# ").replace("**", "").replace("<u>", "").replace("</u>", "")
+    title = " ".join(title.strip("_`").split())
+    label, separator, _ = title.partition(" ")
+    parts = label.rstrip(".").split(".")
+    # Accept labels such as 2, 2.1, A and A.1 only on blocks already tagged as headings.
+    first_is_label = parts[0].isdigit() or (len(parts[0]) == 1 and parts[0].isupper())
+    if separator and first_is_label and all(part.isdigit() for part in parts[1:]):
+        level = len(parts)
+    return title, level
 
 
-def chunk_sections(sections: list[ExtractedSection], title: str) -> list[Document]:
-    """Repeat paper title and heading in each bounded, overlapping chunk."""
+def clean_pdf_text(value: str) -> str:
+    """Remove PDF text artifacts before text is indexed or quoted.
+
+    Expand joined-letter symbols such as the single fi character and remove
+    invisible characters. Join soft-hyphen line breaks, but preserve ordinary
+    hyphens and numbers because changing them can alter evidence.
+    """
+
+    value = value.replace("\r\n", "\n").replace("\u00ad\n", "")
+    value = value.translate(
+        str.maketrans(
+            {
+                "\x00": "",
+                "\u00ad": "",
+                "\u200b": "",
+                "\ufeff": "",
+                "\u00a0": " ",
+                "\ufb00": "ff",
+                "\ufb01": "fi",
+                "\ufb02": "fl",
+                "\ufb03": "ffi",
+                "\ufb04": "ffl",
+            }
+        )
+    )
+    return value.encode("utf-8", errors="replace").decode("utf-8")
+
+
+def split_sections_into_chunks(
+    sections: list[ExtractedSection], title: str
+) -> list[Document]:
+    """Split oversized sections into overlapping child chunks for embedding.
+
+    Repeat the paper title and heading breadcrumb so each child has searchable
+    context. Reserve space for that prefix within the character limit. Keep the
+    section index and citation metadata so a retrieved child can be expanded back
+    into its own section.
+    """
 
     chunks = []
     for section_index, section in enumerate(sections):
-        ## The .strip() method removes leading and trailing whitespace.
         if not section.text.strip():
             continue
         prefix = f"Paper: {title}\n"
@@ -452,4 +585,3 @@ def chunk_sections(sections: list[ExtractedSection], title: str) -> list[Documen
                 )
             )
     return chunks
-    

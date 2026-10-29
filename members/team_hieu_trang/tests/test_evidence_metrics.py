@@ -94,7 +94,8 @@ def test_labels_never_enter_agent_and_resume_checks_them(tmp_path, monkeypatch):
     output = tmp_path / "result.json"
     seen = []
 
-    def answer(question, history):
+    def answer(question, history, *, require_review):
+        assert require_review is False
         seen.append((question, history))
         return {"context": [], "status": "abstained"}
 

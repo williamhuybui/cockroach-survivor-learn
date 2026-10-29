@@ -52,4 +52,7 @@ def initialize_database() -> None:
     """
 
     with open_database() as database:
+        # WAL lets readers continue while a short write transaction is active.
+        # SQLite still allows only one writer at a time; never hold it during inference.
+        database.execute("PRAGMA journal_mode = WAL")
         database.executescript(SCHEMA_FILE.read_text(encoding="utf-8"))

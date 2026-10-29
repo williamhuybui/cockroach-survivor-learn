@@ -25,9 +25,12 @@ from .config import (
 )
 from .evaluation_metrics import (
     load_evidence_labels,
+    load_ranking_labels,
+    measure_ranking_quality,
     measure_retrieval_coverage,
     summarize_latency,
 )
+from .paper_catalog import INITIAL_ALIASES, load_local_aliases
 from .paper_store import build_index_signature, open_chunk_store
 from .services import WORKFLOW_VERSION, answer_research_question
 from .study_materials import load_study_passages
@@ -45,12 +48,14 @@ def build_evaluation_configuration() -> dict:
         "services.py",
         "question_planning.py",
         "grounding.py",
+        "answer_scope.py",
         "retrieval.py",
         "llm.py",
         "config.py",
         "document_processing.py",
         "neural_pdf_extraction.py",
         "paper_store.py",
+        "paper_catalog.py",
         "study_materials.py",
         "evaluation_metrics.py",
         "evaluate.py",
@@ -66,10 +71,17 @@ def build_evaluation_configuration() -> dict:
     index_hash = hashlib.sha256(json.dumps(index_rows).encode()).hexdigest()
     return {
         "workflow": WORKFLOW_VERSION,
+        "interaction_mode": "automatic_independent_questions",
         "code_sha256": digest,
         "index_sha256": index_hash,
         "study_materials_sha256": hashlib.sha256(
             json.dumps(load_study_passages(), sort_keys=True).encode()
+        ).hexdigest(),
+        "catalog_aliases_sha256": hashlib.sha256(
+            json.dumps(
+                {"initial": INITIAL_ALIASES, "local": load_local_aliases()},
+                sort_keys=True,
+            ).encode()
         ).hexdigest(),
         "index_signature": build_index_signature(),
         "rerank_threshold": MIN_RERANK_SCORE,
@@ -127,7 +139,10 @@ def read_expected_abstention(case: dict) -> bool | None:
 
 
 def score_evaluation_result(
-    case: dict, result: dict, relevance: list[dict] | None = None
+    case: dict,
+    result: dict,
+    relevance: list[dict] | None = None,
+    ranking: list[dict] | None = None,
 ) -> dict:
     """Compare returned sources and passages with private benchmark labels.
 
@@ -153,6 +168,7 @@ def score_evaluation_result(
     }
     return {
         **measure_retrieval_coverage(relevance or [], result),
+        **measure_ranking_quality(ranking or [], result),
         "source_recall": len(expected & found) / len(expected) if expected else None,
         "all_sources_found": expected <= found if expected else None,
         "candidate_source_recall": len(expected & candidates) / len(expected)
@@ -216,6 +232,9 @@ def summarize_evaluation_results(rows: list[dict]) -> dict:
         expected_refusals = [
             item for item in known if item["metrics"]["expected_abstention"]
         ]
+        expected_answers = [
+            item for item in known if not item["metrics"]["expected_abstention"]
+        ]
         correct_refusals = sum(
             item["metrics"]["expected_abstention"] for item in refusals
         )
@@ -246,6 +265,20 @@ def summarize_evaluation_results(rows: list[dict]) -> dict:
             if expected_refusals
             else None,
             "abstention_scored_cases": len(known),
+            "false_answer_rate_on_unanswerable": (
+                len(expected_refusals) - correct_refusals
+            )
+            / len(expected_refusals)
+            if expected_refusals
+            else None,
+            "false_abstention_rate_on_answerable": sum(
+                item["metrics"]["abstained"] for item in expected_answers
+            )
+            / len(expected_answers)
+            if expected_answers
+            else None,
+            "unanswerable_scored_cases": len(expected_refusals),
+            "answerable_scored_cases": len(expected_answers),
             "reviewed_answer_accuracy": sum(
                 item["metrics"]["correctness_review"] == "correct" for item in reviewed
             )
@@ -266,6 +299,12 @@ def summarize_evaluation_results(rows: list[dict]) -> dict:
             "candidate_evidence_recall",
             "final_evidence_coverage",
             "all_requirements_covered",
+            "reranked_recall_at_5",
+            "reranked_recall_at_10",
+            "reranked_mrr_at_5",
+            "reranked_mrr_at_10",
+            "reranked_ndcg_at_5",
+            "reranked_ndcg_at_10",
         ):
             values = [
                 item["metrics"][metric]
@@ -285,6 +324,7 @@ def run_evaluation(
     max_cases: int | None = None,
     relevance_path: Path | None = None,
     runtime_state: str = "unclassified",
+    ranking_path: Path | None = None,
 ) -> dict:
     """Run independent benchmark questions and checkpoint each answer or error to JSON.
 
@@ -295,6 +335,10 @@ def run_evaluation(
     dataset_hash = hashlib.sha256(path.read_bytes()).hexdigest()
     cases = load_evaluation_cases(path)
     relevance = load_evidence_labels(relevance_path, {case["id"] for case in cases})
+    ranking = load_ranking_labels(ranking_path, {case["id"] for case in cases})
+    ranking_hash = (
+        hashlib.sha256(ranking_path.read_bytes()).hexdigest() if ranking_path else None
+    )
     relevance_hash = (
         hashlib.sha256(relevance_path.read_bytes()).hexdigest()
         if relevance_path
@@ -316,10 +360,11 @@ def run_evaluation(
             raise ValueError("Cannot resume: the dataset file changed")
         if (
             report.get("relevance_sha256") != relevance_hash
+            or report.get("ranking_sha256") != ranking_hash
             or report.get("runtime_state", "unclassified") != runtime_state
         ):
             raise ValueError(
-                "Cannot resume: relevance labels or runtime classification changed"
+                "Cannot resume: relevance/ranking labels or runtime classification changed"
             )
         if report.get("configuration") != build_evaluation_configuration():
             raise ValueError(
@@ -335,6 +380,7 @@ def run_evaluation(
             "configuration": build_evaluation_configuration(),
             "dataset_sha256": dataset_hash,
             "relevance_sha256": relevance_hash,
+            "ranking_sha256": ranking_hash,
             "runtime_state": runtime_state,
             "index_signature": build_index_signature(),
             "indexed_chunks": open_chunk_store().count(),
@@ -359,11 +405,16 @@ def run_evaluation(
         row["runtime_state"] = runtime_state
         try:
             # No labels, expected papers, or reference answers enter this call.
-            result = answer_research_question(case["question"], [])
+            result = answer_research_question(
+                case["question"], [], require_review=False
+            )
             row.update(
                 result=result,
                 metrics=score_evaluation_result(
-                    case, result, relevance.get(case["id"], [])
+                    case,
+                    result,
+                    relevance.get(case["id"], []),
+                    ranking.get(case["id"], []),
                 ),
             )
         except Exception as exc:  # noqa: BLE001 - an evaluation must record one failed case and continue.
@@ -392,6 +443,11 @@ if __name__ == "__main__":
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--max-cases", type=int)
     parser.add_argument(
+        "--ranking-labels",
+        type=Path,
+        help="Private original-child relevance judgments as JSON",
+    )
+    parser.add_argument(
         "--relevance", type=Path, help="Private reviewed evidence requirements as JSON"
     )
     parser.add_argument(
@@ -408,4 +464,5 @@ if __name__ == "__main__":
         args.max_cases,
         args.relevance,
         args.runtime_state,
+        args.ranking_labels,
     )

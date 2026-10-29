@@ -47,9 +47,8 @@ class Question(BaseModel):
         Compare trimmed, case-insensitive text so four differently formatted copies
         are not accepted as distinct options.
         """
-        if len({x.strip().casefold() for x in self.options}) != 4 or any(
-            not x.strip() for x in self.options
-        ):
+        options = [option.strip().casefold() for option in self.options]
+        if "" in options or len(set(options)) != 4:
             raise ValueError("Four distinct non-empty options are required")
         return self
 
