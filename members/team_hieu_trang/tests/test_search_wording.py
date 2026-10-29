@@ -186,6 +186,8 @@ def test_reranker_orders_passages_by_score_without_heading_override(monkeypatch)
     """A heading cannot promote a low-scoring passage over stronger matches."""
     from types import SimpleNamespace
 
+    # Ordering is under test, so a local .env score minimum must not drop 'weak'.
+    monkeypatch.setattr(retrieval, "MIN_RERANK_SCORE", None)
     monkeypatch.setattr(
         retrieval,
         "get_reranker_model",

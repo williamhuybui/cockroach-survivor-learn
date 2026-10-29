@@ -242,6 +242,18 @@ def find_paper_references(question: str, papers: list[dict]) -> dict:
     }
 
 
+def find_named_source_papers(question: str, papers: list[dict]) -> list[str]:
+    """Return papers the question names as its source, as in 'according to the LoRA paper'.
+
+    Only an explicit 'the <name> paper' phrase counts; a model name such as Mixtral
+    elsewhere in the question does not make its paper an allowed source.
+    """
+    titles = set()
+    for phrase in re.findall(r"\bthe ([^,;?]{2,80}?) paper\b", question, re.IGNORECASE):
+        titles.update(find_paper_references(phrase, papers)["titles"])
+    return sorted(titles)
+
+
 if __name__ == "__main__":
     from .paper_store import list_indexed_papers
 

@@ -22,6 +22,7 @@ from .grounding import (
     verify_answer_citations,
 )
 from .llm import generate_from_evidence
+from .paper_catalog import find_named_source_papers
 from .paper_store import list_indexed_papers
 from .question_planning import (
     QuestionPlan,
@@ -343,7 +344,11 @@ def verify_answer_draft(state: ChatState) -> dict:
     """Validate answer citations and numeric values once, without another model call."""
     started = perf_counter()
     checked = verify_answer_citations(
-        state["draft"], state["evidence"], state["tasks"], question=state["message"]
+        state["draft"],
+        state["evidence"],
+        state["tasks"],
+        question=state["message"],
+        source_papers=find_named_source_papers(state["message"], list_indexed_papers()),
     )
     return {
         "verification": checked,

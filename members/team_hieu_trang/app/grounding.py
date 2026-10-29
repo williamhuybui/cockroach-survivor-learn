@@ -108,6 +108,75 @@ def check_requested_currency(question: str, answer: str, evidence: str) -> str:
     return ""
 
 
+# Requested property: label, task-question pattern, words that must name it near the answer.
+REQUESTED_ATTRIBUTES = (
+    ("batch size", r"\bbatch sizes?\b", ("batch",)),
+    ("learning rate", r"\blearning rates?\b", ("learning rate", "lr")),
+    ("warmup", r"\bwarm-?up\b", ("warmup", "warm-up")),
+    ("dropout", r"\bdropout\b", ("dropout",)),
+    ("weight decay", r"\bweight decay\b", ("weight decay",)),
+    ("optimizer", r"\boptimi[sz]er\b", ("optimi", "adam", "sgd", "adafactor")),
+    ("BLEU", r"\bbleu\b", ("bleu",)),
+    ("accuracy", r"\baccuracy\b", ("accura",)),
+    ("perplexity", r"\bperplexity\b", ("perplexity",)),
+    ("hardware", r"\bgpus?\b|\bhardware\b", ("gpu", "tpu", "a100", "h100", "h800", "v100", "p100")),
+    ("epochs", r"\bepochs?\b", ("epoch",)),
+    ("training steps", r"\b(?:training|optimi[sz]ation) steps\b", ("step",)),
+) + tuple(
+    # A named benchmark must appear near the value: WebShop success cannot answer GSM8K.
+    # Ordinary words such as 'math' are left out because questions use them generically.
+    (name, r"\b" + re.escape(name) + r"\b", (name.casefold(),))
+    for name in (
+        "GSM8K", "MMLU", "HumanEval", "MBPP", "HotpotQA", "ALFWorld", "WebShop",
+        "ImageNet", "SQuAD", "SuperGLUE", "TriviaQA", "LAMBADA", "HellaSwag",
+        "WinoGrande", "PIQA", "BoolQ", "AIME", "Codeforces", "SWE-bench",
+        "LiveCodeBench", "MT-Bench", "AlpacaEval",
+    )
+)
+
+
+# Training settings whose value is always a number, unlike an optimizer or hardware name.
+NUMERIC_SETTINGS = {
+    "batch size", "learning rate", "warmup", "dropout", "weight decay", "epochs",
+    "training steps",
+}
+
+
+def check_requested_attribute(question: str, answer: str, evidence: str) -> str:
+    """Check that a numeric answer is stated for the property the task asks about.
+
+    The answer or a cited sentence containing one of its numbers must name the
+    property. For example, '32k tokens' from a context-size sentence cannot answer
+    a batch-size request. A request for a training setting's value needs a number;
+    other answers without numbers are not checked.
+    """
+    # Numbers repeated from the question, as in 'Mixtral 8x7B', are names, not values.
+    numbers = extract_numbers(answer) - extract_numbers(question)
+    if not numbers:
+        asks_value = re.search(
+            r"\b(?:what|which|how (?:many|much|large|big))\b", question, re.IGNORECASE
+        ) and not re.search(r"\bwhy\b", question, re.IGNORECASE)
+        for label, pattern, _ in REQUESTED_ATTRIBUTES:
+            if (
+                asks_value
+                and label in NUMERIC_SETTINGS
+                and re.search(pattern, question, re.IGNORECASE)
+            ):
+                return f"The requested {label} needs an explicit value, but the answer has none."
+        return ""
+    sentences = re.split(r"(?<=[.!?;])\s+", normalize_evidence_text(evidence))
+    near_answer = " ".join(
+        [answer] + [part for part in sentences if extract_numbers(part) & numbers]
+    ).casefold()
+    for label, pattern, names in REQUESTED_ATTRIBUTES:
+        # Names are word prefixes, so 'optimi' matches optimizer but 'lr' skips 'already'.
+        if re.search(pattern, question, re.IGNORECASE) and not any(
+            re.search(r"\b" + re.escape(name), near_answer) for name in names
+        ):
+            return f"No cited sentence states the answer's values as the requested {label}."
+    return ""
+
+
 def build_abstention_response(reason: str) -> dict:
     """Return an honest unavailable answer without attributed sources."""
     return {"kind": "answer", "status": "abstained", "answer": reason, "sources": []}
@@ -235,7 +304,11 @@ def generate_grounded_draft(
 
 
 def verify_answer_citations(
-    draft: DraftAnswer, evidence: list[dict], tasks: list[dict], question: str = ""
+    draft: DraftAnswer,
+    evidence: list[dict],
+    tasks: list[dict],
+    question: str = "",
+    source_papers: list[str] | None = None,
 ) -> dict:
     """Validate each detail independently so one source cannot cover unrelated tasks.
 
@@ -310,6 +383,15 @@ def verify_answer_citations(
                     reason = "Numbers absent from the cited passages: " + ", ".join(
                         sorted(unsupported)
                     )
+        if not reason:
+            reason = check_requested_attribute(
+                tasks[index]["question"], text, supporting_text
+            )
+        # 'According to the LoRA paper' needs a LoRA citation, not only Mixtral's.
+        if not reason and source_papers and not any(
+            sources[label].get("title") in source_papers for label in ids
+        ):
+            reason = "The question names its source paper, but no cited passage comes from it."
         if reason:
             rejections.append({"detail_index": index, "reason": reason})
             continue
