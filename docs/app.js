@@ -6,10 +6,8 @@ let scores = [];  // rows of scores.csv: { timestamp, date, team, mode, trial, q
 let mode = "practice";
 
 const runsOf = (team, m) => scores.filter((r) => r.team === team.id && r.mode === m);
-const runOf = (team, m) => {
-  const runs = runsOf(team, m);
-  return runs.length ? runs[runs.length - 1] : null;
-};
+const ratio = (r) => (Number(r.questions) > 0 ? r.score / Number(r.questions) : -Infinity);  // runs can have different question counts, so compare by percentage
+const runOf = (team, m) => runsOf(team, m).reduce((best, r) => (!best || ratio(r) > ratio(best) ? r : best), null);  // a team's best run
 const pct = (r) => (Number(r.questions) > 0 ? ((100 * r.score) / Number(r.questions)).toFixed(1).replace(/\.0$/, "") + "%" : "");
 const open = new Set();  // teams whose run history is expanded
 const shown = {};        // last value each number was animated to, so only changed numbers count up again
@@ -45,7 +43,7 @@ function parseCsv(text) {
 function render() {
   const rows = data.teams
     .map((t) => ({ t, r: runOf(t, mode) }))
-    .sort((a, b) => (b.r ? b.r.score : -Infinity) - (a.r ? a.r.score : -Infinity));
+    .sort((a, b) => (b.r ? ratio(b.r) : -Infinity) - (a.r ? ratio(a.r) : -Infinity));
 
   $("#board tbody").innerHTML = rows.map(({ t, r }, i) => {
     if (!r) return `<tr><td>–</td><td>${esc(t.name)}</td><td colspan="2" class="muted">No ${mode} run yet</td></tr>`;
