@@ -7,7 +7,8 @@ let mode = "practice";
 
 const runsOf = (team, m) => scores.filter((r) => r.team === team.id && r.mode === m);
 const runOf = (team, m) => runsOf(team, m).reduce((best, r) => (!best || r.score > best.score ? r : best), null);  // a team's highest-scoring run
-const when = (r) => new Date(r.timestamp).toLocaleString([], { year: "numeric", month: "2-digit", day: "2-digit", hour: "numeric", minute: "2-digit" });
+const CT = { timeZone: "America/Chicago", timeZoneName: "short" };  // everything on the board is shown in Central time
+const when = (r) => new Date(r.timestamp).toLocaleString("en-US", { year: "numeric", month: "2-digit", day: "2-digit", hour: "numeric", minute: "2-digit", ...CT });
 const pct = (r) => (Number(r.questions) > 0 ? ((100 * r.score) / Number(r.questions)).toFixed(1).replace(/\.0$/, "") + "%" : "");
 const collapsed = new Set();  // teams whose run history is hidden (all trials show by default)
 const shown = {};        // last value each number was animated to, so only changed numbers count up again
@@ -68,7 +69,7 @@ async function load() {
   try {
     data = await (await fetch("leaderboard.json", { cache: "no-store" })).json();
     scores = parseCsv(await (await fetch("scores.csv", { cache: "no-store" })).text()).map((r) => ({ ...r, score: Number(r.score) }));
-    $("#updated").textContent = scores.length ? new Date(scores[scores.length - 1].timestamp).toLocaleString() : "never";
+    $("#updated").textContent = scores.length ? new Date(scores[scores.length - 1].timestamp).toLocaleString("en-US", CT) : "never";
     $("#teams").innerHTML = data.teams.map((t) =>
       `<div class="card"><h4>${esc(t.name)}</h4><div>Captain: ${esc(t.captain)}</div><div class="muted">${t.members.map(esc).join(", ")}</div></div>`).join("");
   } catch (e) {
