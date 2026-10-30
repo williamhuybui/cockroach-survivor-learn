@@ -6,7 +6,7 @@ test. Test runs must never clear or overwrite the papers being indexed by the us
 
 import pytest
 
-from app import db, document_processing, paper_store, study_materials
+from app import db, document_processing, paper_catalog, paper_store, services, study_materials
 
 
 @pytest.fixture(autouse=True)
@@ -18,6 +18,9 @@ def local_storage(tmp_path, monkeypatch):
     monkeypatch.setattr(
         study_materials, "SOURCE_MANIFEST_PATH", tmp_path / "sources.json"
     )
+    monkeypatch.setattr(paper_catalog, "SOURCE_MANIFEST_PATH", tmp_path / "sources.json")
+    # Workflow tests use fake answers and should not call the live recovery model.
+    monkeypatch.setattr(services, "recover_rejected_citations", lambda draft, evidence, tasks, question, checked: checked)
     monkeypatch.setattr(
         document_processing,
         "PDF_EXTRACTION_REPORT_PATH",

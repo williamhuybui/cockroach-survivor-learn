@@ -11,6 +11,15 @@ import pytest
 from app import evaluate
 
 
+def test_key_fact_overlap_is_a_diagnostic_not_semantic_accuracy():
+    assert evaluate.measure_key_fact_overlap("BART was not used", "BART was used") == 1.0
+    assert evaluate.measure_key_fact_overlap("41.0 BLEU", "41.8 BLEU") == 0.5
+    assert evaluate.score_evaluation_result(
+        {"type": "unanswerable", "ground_truth": "not stated"},
+        {"status": "abstained", "answer": "I don't know"},
+    )["key_fact_overlap"] is None
+
+
 def test_generic_dataset_does_not_leak_ground_truth(tmp_path, monkeypatch):
     dataset = tmp_path / "anything.csv"
     dataset.write_text(

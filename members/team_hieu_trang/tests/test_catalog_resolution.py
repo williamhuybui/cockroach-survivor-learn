@@ -53,6 +53,55 @@ def test_uppercase_identifier_and_title_before_colon_need_no_alias():
     ] == [papers[1]["title"]]
 
 
+@pytest.mark.parametrize("question", [
+    "What does the Chain-of-Thought paper find?",
+    "What does the chain of thought paper find?",
+])
+def test_unique_title_prefix_resolves_without_an_alias(question):
+    papers = [
+        {"title": "11_Chain-of-Thought_Prompting.pdf", "aliases": []},
+        {"title": "27_Reasoning_Capacity.pdf", "aliases": []},
+    ]
+    assert paper_catalog.find_paper_references(question, papers)["titles"] == [papers[0]["title"]]
+
+
+def test_shared_title_prefix_is_ambiguous():
+    papers = [{"title": "01_Scaling_Laws_for_Models.pdf"}, {"title": "02_Scaling_Laws_for_Data.pdf"}]
+    refs = paper_catalog.find_paper_references("What do Scaling Laws report?", papers)
+    assert refs["titles"] == []
+    assert refs["ambiguous"] is True
+    assert set(refs["candidates"]) == {paper["title"] for paper in papers}
+
+
+def test_generic_title_prefix_does_not_identify_a_paper():
+    papers = [{"title": "01_Language_Models_Learn_Reasoning.pdf"}]
+    refs = paper_catalog.find_paper_references("What do language models do?", papers)
+    assert refs["titles"] == []
+
+
+def test_question_title_does_not_produce_incomplete_aliases():
+    paper = {"title": "28_Why_Do_Multi-Agent_LLM_Systems_Fail.pdf", "aliases": ["MAST-Data"]}
+    names = paper_catalog.catalog_identity_names(paper)
+    assert "MAST-Data" in names
+    assert "why do" not in names
+    assert "why do multi agent llm systems" not in names
+    assert paper_catalog.find_paper_references("What does the why do paper say?", [paper])["titles"] == []
+
+
+def test_prefixes_end_at_natural_boundaries():
+    names = paper_catalog.title_prefixes("Neural Machine Translation by Jointly Learning to Align and Translate")
+    assert "neural machine translation" in names
+    assert "neural machine" not in names
+    assert "neural machine translation by jointly" not in names
+
+
+def test_longer_specific_prefix_beats_shared_shorter_prefix():
+    papers = [{"title": "01_Scaling_Laws_for_Models.pdf"}, {"title": "02_Scaling_Laws_for_Data.pdf"}]
+    refs = paper_catalog.find_paper_references("What do Scaling Laws for Data report?", papers)
+    assert refs["titles"] == [papers[1]["title"]]
+    assert not refs["ambiguous"]
+
+
 def test_distinctive_title_fragment_produces_candidates_without_stopping():
     """A weaker shortened name can reach retrieval rather than requiring an alias edit."""
     papers = [{"title": "01_Chimera_Compute_Efficient_Training.pdf", "aliases": []}]
@@ -448,3 +497,16 @@ def test_approved_verified_multi_paper_plan_is_validated(monkeypatch):
     )
     assert not result["clarification"]
     assert result["tasks"][0]["paper"] == ["A.pdf", "B.pdf"]
+def test_author_opening_is_a_candidate_not_a_verified_title(tmp_path, monkeypatch):
+    import json
+    from app import paper_catalog
+
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"placeholder")
+    manifest = tmp_path / "sources.json"
+    manifest.write_text(json.dumps([{"title": "paper.pdf", "path": str(pdf)}]))
+    monkeypatch.setattr(paper_catalog, "SOURCE_MANIFEST_PATH", manifest)
+    monkeypatch.setattr(paper_catalog, "read_paper_opening", lambda *args: "title\nada lovelace\nabstract")
+    result = paper_catalog.find_paper_references("What did Lovelace et al. find?", [{"title": "paper.pdf"}])
+    assert result["candidates"] == ["paper.pdf"]
+    assert result["titles"] == []

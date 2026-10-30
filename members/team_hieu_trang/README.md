@@ -391,6 +391,22 @@ network. Drive permissions are not reproduced per user.
 
 ## Conditional workflow and evaluation compatibility
 
+When a draft citation fails, the agent can ask Gemma to select another retrieved
+passage for the same task and paper. The replacement must pass the existing checks
+and include an exact quote containing the answer's numbers. Recovered citations and
+model errors are recorded in the trace. This does not prove semantic support.
+
+The paper catalog adds unique shortened title prefixes to its alias options at
+runtime, alongside manual aliases in the same `aliases` list. Shared prefixes remain
+ambiguous. These generated names are not written to the source CSV or manual alias table.
+`catalog_aliases.json` also contains a snapshot of the current names. It does not
+automatically update when the indexed papers change; runtime matching generates
+prefixes from the current catalog each time.
+
+`python -m app.evaluate` reports `key_fact_overlap` when an answer reference is
+available. This is a token-overlap diagnostic, not an accuracy or hallucination
+score. Unanswerable cases are excluded from it and have separate abstention metrics.
+
 The question graph is `plan -> retrieve -> generate -> verify -> format_response`.
 Clarification and empty evidence route directly to formatting. There are no graph
 retry loops. The browser creates quizzes through chat; only the unused standalone

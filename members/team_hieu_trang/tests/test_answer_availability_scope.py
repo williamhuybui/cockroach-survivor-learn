@@ -398,4 +398,5 @@ def test_joint_detail_can_cite_both_verified_papers_but_not_a_third(extra_source
     )
     checked = grounding.verify_answer_citations(draft, evidence, tasks)
     result = grounding.format_cited_answer(checked, evidence, tasks)
-    assert result["status"] == ("abstained" if extra_source else "answered")
+    assert result["status"] == "answered"
+    assert result["detail_answers"][0]["source_ids"] == ["S1", "S2"]

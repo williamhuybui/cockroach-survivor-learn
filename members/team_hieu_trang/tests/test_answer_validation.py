@@ -8,6 +8,49 @@ from app.grounding import DetailAnswer, DraftAnswer
 from app.question_planning import QuestionPlan, SearchTask
 
 
+def test_citation_recovery_uses_exact_supporting_quote_from_same_task(monkeypatch):
+    tasks = [{"question": "How many tokens?", "paper": "A.pdf"}]
+    evidence = [
+        {"id": "S1", "title": "A.pdf", "content": "No token count stated.", "task_ids": [0]},
+        {"id": "S2", "title": "A.pdf", "content": "The model used 15 tokens.", "task_ids": [0]},
+        {"id": "S3", "title": "B.pdf", "content": "The model used 15 tokens.", "task_ids": [0]},
+    ]
+    draft = DraftAnswer(answers=[DetailAnswer(availability="available", answer="15 tokens", source_ids=["S1"])])
+    checked = grounding.verify_answer_citations(draft, evidence, tasks)
+    def select(schema, instruction, candidates, request):
+        assert [row["id"] for row in candidates] == ["S2"]
+        return grounding.RecoveredCitation(source_id="S2", quote="The model used 15 tokens.")
+    monkeypatch.setattr(grounding, "generate_from_evidence", select)
+    result = grounding.recover_rejected_citations(draft, evidence, tasks, "How many tokens?", checked)
+    assert result["accepted"][0]["source_ids"] == ["S2"]
+    assert draft.answers[0].source_ids == ["S1"]
+
+
+@pytest.mark.parametrize("quote", ["The model used", "It used 20 tokens."])
+def test_citation_recovery_rejects_invented_or_incomplete_quotes(monkeypatch, quote):
+    tasks = [{"question": "How many tokens?", "paper": "A.pdf"}]
+    evidence = [{"id": "S1", "title": "A.pdf", "content": "No token count.", "task_ids": [0]},
+                {"id": "S2", "title": "A.pdf", "content": "The model used 20 tokens.", "task_ids": [0]}]
+    draft = DraftAnswer(answers=[DetailAnswer(availability="available", answer="20 tokens", source_ids=["S1"])])
+    checked = grounding.verify_answer_citations(draft, evidence, tasks)
+    monkeypatch.setattr(grounding, "generate_from_evidence", lambda *args: grounding.RecoveredCitation(source_id="S2", quote=quote))
+    assert grounding.recover_rejected_citations(draft, evidence, tasks, "How many?", checked)["accepted"] == []
+
+
+def test_citation_recovery_preserves_rejection_on_model_error(monkeypatch):
+    tasks = [{"question": "How many tokens?", "paper": "A.pdf"}]
+    evidence = [{"id": "S1", "title": "A.pdf", "content": "No token count.", "task_ids": [0]},
+                {"id": "S2", "title": "A.pdf", "content": "The model used 20 tokens.", "task_ids": [0]}]
+    draft = DraftAnswer(answers=[DetailAnswer(availability="available", answer="20 tokens", source_ids=["S1"])])
+    checked = grounding.verify_answer_citations(draft, evidence, tasks)
+    def fail(*args):
+        raise RuntimeError("model offline")
+    monkeypatch.setattr(grounding, "generate_from_evidence", fail)
+    result = grounding.recover_rejected_citations(draft, evidence, tasks, "How many?", checked)
+    assert result["rejections"] == checked["rejections"]
+    assert "model offline" in result["recovery_errors"][0]["error"]
+
+
 @pytest.fixture
 def evidence():
     """Provide sources for two independently requested details."""
@@ -154,8 +197,8 @@ def test_citation_must_belong_to_this_detail_even_when_paper_is_unscoped(evidenc
     assert result["status"] == "abstained"
 
 
-def test_mixed_task_citations_are_not_silently_removed(evidence):
-    """A wrong-task citation rejects that answer, while another task can survive."""
+def test_mixed_task_citations_keep_only_matching_sources(evidence):
+    """Extra citations are removed when a source for the correct task remains."""
     result, checked = evaluate(
         [
             {"answer": "Alpha scored 37.6.", "source_ids": ["S1", "S2"]},
@@ -163,9 +206,10 @@ def test_mixed_task_citations_are_not_silently_removed(evidence):
         ],
         evidence,
     )
-    assert result["status"] == "partial"
-    assert result["missing_tasks"] == ["Alpha score?"]
-    assert checked["rejected_count"] == 1
+    assert result["status"] == "answered"
+    assert result["missing_tasks"] == []
+    assert checked["rejected_count"] == 0
+    assert result["detail_answers"][0]["source_ids"] == ["S1"]
     assert "Beta trains small adapters." in result["answer"]
 
 

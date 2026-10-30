@@ -144,6 +144,34 @@ def test_catalog_enriches_only_actual_indexed_papers(study_files, monkeypatch):
     assert papers[0]["title"] == "42_Compact.pdf"
 
 
+def test_generated_aliases_only_include_unique_title_prefixes(monkeypatch):
+    titles = ["11_Chain-of-Thought_Prompting.pdf", "01_Scaling_Laws_for_Models.pdf",
+              "02_Scaling_Laws_for_Data.pdf", "03_Other_Paper.pdf"]
+    saved = {"metadatas": [{"document_id": str(i), "title": title,
+                            "source_url": "https://example.org", "indexed_at": "today"}
+                           for i, title in enumerate(titles)]}
+    monkeypatch.setattr(paper_store, "open_chunk_store", lambda: SimpleNamespace(get=lambda **kwargs: saved))
+    monkeypatch.setattr(paper_store, "load_paper_catalog", lambda: [])
+    monkeypatch.setattr(paper_store, "load_local_aliases", lambda: {"0": ["CoT"]})
+    papers = {row["title"]: row for row in paper_store.list_indexed_papers()}
+    assert papers[titles[0]]["aliases"] == ["CoT", "chain of thought"]
+    assert "generated_aliases" not in papers[titles[0]]
+    assert "scaling laws" not in papers[titles[1]]["aliases"]
+    assert "scaling laws" not in papers[titles[2]]["aliases"]
+
+
+def test_generated_alias_does_not_conflict_with_another_papers_manual_alias(monkeypatch):
+    titles = ["01_Chain-of-Thought_Prompting.pdf", "02_Other.pdf"]
+    saved = {"metadatas": [{"document_id": str(i), "title": title,
+                            "source_url": "https://example.org", "indexed_at": "today"}
+                           for i, title in enumerate(titles)]}
+    monkeypatch.setattr(paper_store, "open_chunk_store", lambda: SimpleNamespace(get=lambda **kwargs: saved))
+    monkeypatch.setattr(paper_store, "load_paper_catalog", lambda: [])
+    monkeypatch.setattr(paper_store, "load_local_aliases", lambda: {"1": ["Chain of Thought"]})
+    papers = {row["title"]: row for row in paper_store.list_indexed_papers()}
+    assert "chain of thought" not in papers[titles[0]]["aliases"]
+
+
 def test_planner_receives_catalog_identity_and_reference_search_instructions(
     study_files, monkeypatch
 ):

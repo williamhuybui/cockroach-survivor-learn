@@ -19,6 +19,7 @@ from .grounding import (
     build_source_citations,
     format_cited_answer,
     generate_grounded_draft,
+    recover_rejected_citations,
     verify_answer_citations,
 )
 from .llm import generate_from_evidence
@@ -340,10 +341,13 @@ def generate_answer_draft(state: ChatState) -> dict:
 
 
 def verify_answer_draft(state: ChatState) -> dict:
-    """Validate answer citations and numeric values once, without another model call."""
+    """Check citations and try to recover rejected ones from the retrieved evidence."""
     started = perf_counter()
     checked = verify_answer_citations(
         state["draft"], state["evidence"], state["tasks"], question=state["message"]
+    )
+    checked = recover_rejected_citations(
+        state["draft"], state["evidence"], state["tasks"], state["message"], checked
     )
     return {
         "verification": checked,
@@ -354,6 +358,8 @@ def verify_answer_draft(state: ChatState) -> dict:
                 "accepted_detail_count": len(checked["accepted"]),
                 "rejected_count": checked["rejected_count"],
                 "rejections": checked["rejections"],
+                "recovered_citations": checked.get("recovered_citations", []),
+                "recovery_errors": checked.get("recovery_errors", []),
             },
         },
     }

@@ -25,5 +25,10 @@
   "34_Reverse_CAPTCHA.pdf": ["Reverse CAPTCHA"],
   "36_How_Controllable_Are_Large_Language_Models_SteerEval.pdf": ["SteerEval"],
   "37_Cola_DLM.pdf": ["Cola DLM"],
-  "38_AI_Co-Mathematician.pdf": ["AI co-mathematician"]
+  "38_AI_Co-Mathematician.pdf": ["AI co-mathematician"],
+  "02_Neural_Machine_Translation_by_Jointly_Learning_to_Align_and_Translate.pdf": ["neural machine translation"],
+  "05_GPT-3_Language_Models_are_Few-Shot_Learners.pdf": ["gpt 3"],
+  "06_Scaling_Laws_for_Neural_Language_Models.pdf": ["scaling laws"],
+  "11_Chain-of-Thought_Prompting.pdf": ["chain of thought"],
+  "25_Alignment_Faking_in_Large_Language_Models.pdf": ["alignment faking"]
 }

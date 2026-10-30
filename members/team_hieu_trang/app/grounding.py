@@ -40,6 +40,13 @@ class DraftAnswer(BaseModel):
     )
 
 
+class RecoveredCitation(BaseModel):
+    """A replacement source and an exact quotation, or NONE when unsupported."""
+
+    source_id: str = Field(description="A supplied source label, or NONE.")
+    quote: str = Field(description="An exact continuous quotation supporting the whole answer, or empty.")
+
+
 def normalize_evidence_text(text: str) -> str:
     """Join PDF word wrapping and normalize typography before checking source text."""
     text = unicodedata.normalize("NFKC", text)
@@ -262,20 +269,24 @@ def verify_answer_citations(
             reason = "Unknown source citation: " + ", ".join(
                 sorted(ids - sources.keys())
             )
-        elif not reason and any(
-            index not in sources[label].get("task_ids", range(len(tasks)))
-            or (
-                tasks[index].get("paper")
-                and sources[label].get("title")
-                not in (
-                    tasks[index]["paper"]
-                    if isinstance(tasks[index]["paper"], list)
-                    else [tasks[index]["paper"]]
+        elif not reason:
+            # Keep valid citations when the model also lists an unrelated passage.
+            scoped_ids = {
+                label for label in ids
+                if index in sources[label].get("task_ids", range(len(tasks)))
+                and (
+                    not tasks[index].get("paper")
+                    or sources[label].get("title") in (
+                        tasks[index]["paper"]
+                        if isinstance(tasks[index]["paper"], list)
+                        else [tasks[index]["paper"]]
+                    )
                 )
-            )
-            for label in ids
-        ):
-            reason = "A cited passage is outside this detail's task or paper scope."
+            }
+            if scoped_ids:
+                ids = scoped_ids
+            else:
+                reason = "A cited passage is outside this detail's task or paper scope."
         if not reason:
             reason, supporting_text = check_explicit_answer_scope(
                 tasks[index]["question"],
@@ -325,6 +336,62 @@ def verify_answer_citations(
         "rejections": rejections,
         "missing_tasks": [i for i in range(len(tasks)) if i not in covered],
     }
+
+
+def recover_rejected_citations(
+    draft: DraftAnswer, evidence: list[dict], tasks: list[dict], question: str, checked: dict
+) -> dict:
+    """Try another same-task passage when a draft's original citation fails.
+
+    Ask Gemma to select a passage and quote the supporting text. A quote must
+    exist in that passage and contain the answer's numbers. These checks reduce
+    mistakes but do not prove that the quoted passage entails the answer.
+    """
+    updated = draft.model_copy(deep=True)
+    recovered, errors = [], []
+    for rejection in checked["rejections"]:
+        index = rejection["detail_index"]
+        if index >= len(tasks) or index >= len(updated.answers) or updated.answers[index] is None:
+            continue
+        candidates = []
+        for passage in evidence:
+            trial = updated.model_copy(deep=True)
+            trial.answers[index].source_ids = [passage["id"]]
+            result = verify_answer_citations(trial, evidence, tasks, question)
+            if any(row["task_index"] == index and row["source_ids"] == [passage["id"]] for row in result["accepted"]):
+                candidates.append(passage)
+        if not candidates:
+            continue
+        try:
+            selection = generate_from_evidence(
+                RecoveredCitation,
+                "Select one source only if it explicitly supports every claim in the proposed answer, "
+                "including the same model, dataset, year and measurement. Do not infer relationships. "
+                "Return an exact continuous quotation from that source. Matching numbers alone are insufficient. "
+                "If none supports the whole answer, return source_id NONE and an empty quote.",
+                candidates,
+                {"question": question, "task": tasks[index]["question"], "answer": updated.answers[index].answer},
+            )
+        except Exception as exc:
+            # An unavailable recovery model must not stop the existing answer path.
+            errors.append({"detail_index": index, "error": f"{type(exc).__name__}: {exc}"})
+            continue
+        if selection is None:
+            continue
+        source = next((row for row in candidates if row["id"] == selection.source_id), None)
+        quote = normalize_evidence_text(selection.quote).casefold()
+        if (
+            source is None or not quote
+            or quote not in normalize_evidence_text(source["content"]).casefold()
+            or extract_numbers(updated.answers[index].answer) - extract_numbers(selection.quote)
+        ):
+            continue
+        updated.answers[index].source_ids = [source["id"]]
+        recovered.append({"detail_index": index, "source_id": source["id"]})
+    result = verify_answer_citations(updated, evidence, tasks, question) if recovered else dict(checked)
+    result["recovered_citations"] = recovered
+    result["recovery_errors"] = errors
+    return result
 
 
 def format_cited_answer(

@@ -9,8 +9,10 @@ import argparse
 import json
 import re
 import unicodedata
+from functools import lru_cache
 from pathlib import Path
 
+from .config import SOURCE_MANIFEST_PATH
 from .db import initialize_database, open_database
 
 # Primary names checked against paper titles/opening text, not evaluation labels.
@@ -28,12 +30,36 @@ def normalize_paper_reference(text: str) -> str:
     return re.sub(r"[^\w.]+|_", " ", text).strip()
 
 
+def title_prefixes(text: str) -> list[str]:
+    """Suggest a few title beginnings that end at a natural phrase boundary."""
+    generic = {"a", "an", "the", "of", "in", "on", "for", "and", "to", "with", "from", "by", "is", "are", "all", "language", "model", "models", "paper", "learning", "training"}
+    words = normalize_paper_reference(text).split()
+    if words and words[0] == "the":
+        words = words[1:]
+    # Questions and incomplete titles do not form dependable shortened names.
+    if not words or words[0] in {"why", "what", "how", "when", "where", "who", "which", "does", "do", "can", "is", "are"}:
+        return []
+    prefixes = []
+    # A multiword hyphenated opening such as "Chain-of-Thought" stays together.
+    opening = re.match(r"^\s*(?:the\s+)?([^\W_]+(?:-[^\W_]+){2,})(?=[\s_:]|$)", text, re.IGNORECASE)
+    if opening:
+        prefixes.append(normalize_paper_reference(opening.group(1)))
+    # Stop at the first connecting word, rather than inventing every partial phrase.
+    for end in range(2, len(words)):
+        if words[end] in {"for", "in", "on", "by", "with", "from", "of"}:
+            prefix = words[:end]
+            if prefix[-1] not in generic and sum(word not in generic for word in prefix) >= 2 and not any(word.isdigit() for word in prefix):
+                prefixes.append(" ".join(prefix))
+            break
+    return list(dict.fromkeys(prefixes))
+
+
 def catalog_identity_names(row: dict) -> list[str]:
-    """Read full names and recognizable leading identifiers directly from the catalog.
+    """Read full names, aliases and meaningful title prefixes from the catalog.
 
     A filename such as 05_ORION-3_Few_Shot_Learners.pdf already supplies ORION-3.
-    Uppercase identifiers and labels before a colon also stand alone. Aliases are
-    optional additions; no question-specific mapping is stored here.
+    Prefixes let a question name the start of a paper's title; shared names are
+    checked across the catalog before the planner selects a paper.
     """
     stem = re.sub(r"^\d+[ _-]*", "", Path(row["title"]).stem)
     title = row.get("catalog_title", "")
@@ -47,6 +73,7 @@ def catalog_identity_names(row: dict) -> list[str]:
             names.append(normalize_paper_reference(lead).replace(" ", ""))
         if ":" in text:
             names.append(text.partition(":")[0])
+        names.extend(title_prefixes(text))
     return names
 
 
@@ -129,6 +156,50 @@ def set_paper_aliases(document_id: str, aliases: list[str]) -> None:
         )
 
 
+@lru_cache(maxsize=128)
+def read_paper_opening(path: str, modified: int) -> str:
+    """Read the first page once; its opening often contains the author list."""
+    import pymupdf
+
+    try:
+        with pymupdf.open(path) as document:
+            return document[0].get_text("text")[:600].casefold() if len(document) else ""
+    except (OSError, RuntimeError, ValueError):
+        return ""
+
+
+def find_author_paper_candidates(question: str, papers: list[dict]) -> set[str]:
+    """Suggest papers whose opening mentions the named author; never treat it as proof."""
+    matches = re.findall(r"\b([A-Z][a-z]{2,})\s+et\s+al\b", question)
+    if not matches or not SOURCE_MANIFEST_PATH.is_file():
+        return set()
+    try:
+        entries = json.loads(SOURCE_MANIFEST_PATH.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return set()
+    allowed = {row["title"] for row in papers}
+    candidates = set()
+    for surname in matches:
+        hits = []
+        for entry in entries:
+            if entry.get("title") not in allowed:
+                continue
+            path = Path(entry["path"])
+            path = path if path.is_absolute() else SOURCE_MANIFEST_PATH.parent / path
+            try:
+                opening = read_paper_opening(str(path), path.stat().st_mtime_ns)
+            except OSError:
+                continue
+            match = re.search(rf"\b{re.escape(surname.casefold())}\b", opening)
+            if match:
+                hits.append((match.start(), entry["title"]))
+        hits.sort()
+        # Similar positions are ambiguous: keep both as candidates.
+        if hits:
+            candidates.update(title for pos, title in hits if pos - hits[0][0] < 30)
+    return candidates
+
+
 def find_paper_references(question: str, papers: list[dict]) -> dict:
     """Find clear catalog identities and weaker candidates worth retrieving.
 
@@ -192,6 +263,9 @@ def find_paper_references(question: str, papers: list[dict]) -> dict:
             # Title fragments can match unrelated papers; prefer the explicit author.
             # "Smith et al." conventionally names the first author, if known.
             candidates = first_author_candidates or author_candidates
+    if not titles and not author_candidates:
+        author_candidates = find_author_paper_candidates(question, papers)
+        candidates.update(author_candidates)
     if not titles and not author_candidates:
         # Generic title words alone do not identify a paper. A distinctive leading
         # word or a multiword fragment can still supply candidates for retrieval.

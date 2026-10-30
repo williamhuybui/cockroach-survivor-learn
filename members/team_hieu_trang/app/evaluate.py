@@ -135,7 +135,22 @@ def read_expected_abstention(case: dict) -> bool | None:
         return behavior in {"abstain", "abstained", "no_answer", "refuse"}
     if case.get("type", "").casefold() == "unanswerable":
         return True
+    if case.get("type", "").casefold() in {"single", "multi"}:
+        return False
     return None
+
+
+def measure_key_fact_overlap(answer: str, reference: str) -> float | None:
+    """Measure matching reference tokens; this does not check meaning or accuracy."""
+    if not reference.strip():
+        return None
+    normalize = lambda text: re.sub(r"(?<=\d),(?=\d)", "", text.lower())
+    tokens = re.findall(r"[A-Za-z0-9][A-Za-z0-9.,%/+\-]*\d[A-Za-z0-9.,%/+\-]*|\b[A-Z]{2,}[A-Za-z0-9\-]*\b", reference)
+    keys = {normalize(token).strip(".,-") for token in tokens if token.strip(".,-")}
+    if not keys:
+        stopwords = {"about", "which", "their", "there", "these", "those", "while", "where", "being", "other", "within", "using", "uses", "used", "with", "from", "that", "this", "have", "such", "than", "also", "over"}
+        keys = set(re.findall(r"[a-z]{5,}", reference.lower())) - stopwords
+    return sum(key in normalize(answer) for key in keys) / len(keys) if keys else None
 
 
 def score_evaluation_result(
@@ -181,6 +196,9 @@ def score_evaluation_result(
         if "status" in result
         else None,
         "expected_abstention": read_expected_abstention(case),
+        "key_fact_overlap": measure_key_fact_overlap(
+            result.get("answer", ""), case.get("ground_truth") or case.get("reference_answer") or case.get("expected_answer") or ""
+        ) if read_expected_abstention(case) is not True else None,
         "correctness_review": None,
         "supported_claims_review": None,
         "total_claims_review": None,
@@ -296,6 +314,7 @@ def summarize_evaluation_results(rows: list[dict]) -> dict:
             ),
         }
         for metric in (
+            "key_fact_overlap",
             "candidate_evidence_recall",
             "final_evidence_coverage",
             "all_requirements_covered",

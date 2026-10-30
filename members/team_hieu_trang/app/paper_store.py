@@ -5,6 +5,9 @@ surrounding text by ID. SQLite application history is managed separately in db.p
 No Chroma server is required for these persistent local collections.
 """
 
+import re
+from pathlib import Path
+
 import chromadb
 
 from .config import (
@@ -14,7 +17,10 @@ from .config import (
     EMBED_MODEL,
     MAX_CHUNK_CHARACTERS,
 )
-from .paper_catalog import INITIAL_ALIASES, load_local_aliases
+from .paper_catalog import (
+    INITIAL_ALIASES, catalog_identity_names, load_local_aliases,
+    normalize_paper_reference, title_prefixes,
+)
 from .study_materials import load_paper_catalog
 
 COLLECTION_NAME = "research_papers"
@@ -109,4 +115,15 @@ def list_indexed_papers() -> list[dict]:
                 )
             ),
         }
-    return sorted(sources.values(), key=lambda source: source["title"].casefold())
+    papers = sorted(sources.values(), key=lambda source: source["title"].casefold())
+    owners = {}
+    for paper in papers:
+        for name in catalog_identity_names(paper):
+            owners.setdefault(normalize_paper_reference(name), set()).add(paper["id"])
+    for paper in papers:
+        stem = re.sub(r"^\d+[ _-]*", "", Path(paper["title"]).stem).replace("_", " ")
+        suggested = title_prefixes(stem) + title_prefixes(paper.get("catalog_title") or "")
+        generated = list(dict.fromkeys(name for name in suggested if owners[name] == {paper["id"]}))
+        existing = {normalize_paper_reference(name) for name in paper["aliases"]}
+        paper["aliases"].extend(name for name in generated if name not in existing)
+    return papers
