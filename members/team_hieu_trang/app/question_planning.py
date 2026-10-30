@@ -16,6 +16,8 @@ from .paper_catalog import catalog_identity_names, find_paper_references
 from .retrieval import find_bm25_candidates, tokenize_search_text
 
 
+# A task is one retrieval question and, if resolved, an exact indexed paper title.
+# The graph searches these tasks separately before combining their evidence.
 class SearchTask(BaseModel):
     """One search question scoped to a paper, a verified paper set, or discovery."""
 

@@ -32,6 +32,8 @@ class DetailAnswer(BaseModel):
     )
 
 
+# This is Gemma's structured draft, not the final verified response.
+# Its claims and reported gaps are checked before formatting the user-facing answer.
 class DraftAnswer(BaseModel):
     """Answers in requested order; Python computes the overall response status."""
 
