@@ -7,6 +7,7 @@ They run automatically; no human review is required to produce an answer.
 
 import re
 import unicodedata
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, Field, create_model
@@ -53,6 +54,41 @@ def extract_numbers(text: str) -> set[str]:
     """Treat numeric forms such as 10,000 and 10000 consistently."""
     text = re.sub(r"(?<=\d),(?=\d)", "", normalize_evidence_text(text))
     return set(re.findall(r"\d+(?:\.\d+)?", text))
+
+
+# Magnitude words and capital suffixes; lowercase single letters are left out
+# because they also abbreviate units such as metres or minutes.
+SCALES = {
+    "k": 10**3, "thousand": 10**3, "m": 10**6, "million": 10**6, "b": 10**9,
+    "bn": 10**9, "billion": 10**9, "t": 10**12, "trillion": 10**12,
+}
+SCALED_NUMBER = re.compile(
+    r"(\d+(?:\.\d+)?)\s*(?:([KMBT])\b|(bn|thousand|million|billion|trillion)\b)",
+    re.IGNORECASE,
+)
+
+
+def extract_scaled_values(text: str) -> dict[str, set[Decimal]]:
+    """Map each scaled number to its absolute value: '2.5 billion' and '2,500M' agree."""
+    text = re.sub(r"(?<=\d),(?=\d)", "", normalize_evidence_text(text))
+    values: dict[str, set[Decimal]] = {}
+    for match in SCALED_NUMBER.finditer(text):
+        letter, word = match.group(2), match.group(3)
+        if letter and not letter.isupper():
+            continue
+        scale = SCALES[(letter or word).casefold()]
+        values.setdefault(match.group(1), set()).add(Decimal(match.group(1)) * scale)
+    return values
+
+
+def find_unsupported_numbers(answer: str, evidence: str) -> set[str]:
+    """Numbers in the answer that the evidence states in neither the same nor an equal scaled form."""
+    missing = extract_numbers(answer) - extract_numbers(evidence)
+    if not missing:
+        return missing
+    stated = set().union(*extract_scaled_values(evidence).values())
+    scaled = extract_scaled_values(answer)
+    return {number for number in missing if not scaled.get(number, set()) & stated}
 
 
 def check_requested_currency(question: str, answer: str, evidence: str) -> str:
@@ -109,7 +145,7 @@ def check_requested_currency(question: str, answer: str, evidence: str) -> str:
 
 
 # Requested property: label, task-question pattern, words that must name it near the answer.
-REQUESTED_ATTRIBUTES = (
+REQUESTED_PROPERTIES = (
     ("batch size", r"\bbatch sizes?\b", ("batch",)),
     ("learning rate", r"\blearning rates?\b", ("learning rate", "lr")),
     ("warmup", r"\bwarm-?up\b", ("warmup", "warm-up")),
@@ -122,7 +158,8 @@ REQUESTED_ATTRIBUTES = (
     ("hardware", r"\bgpus?\b|\bhardware\b", ("gpu", "tpu", "a100", "h100", "h800", "v100", "p100")),
     ("epochs", r"\bepochs?\b", ("epoch",)),
     ("training steps", r"\b(?:training|optimi[sz]ation) steps\b", ("step",)),
-) + tuple(
+)
+NAMED_BENCHMARKS = tuple(
     # A named benchmark must appear near the value: WebShop success cannot answer GSM8K.
     # Ordinary words such as 'math' are left out because questions use them generically.
     (name, r"\b" + re.escape(name) + r"\b", (name.casefold(),))
@@ -148,37 +185,46 @@ def check_requested_attribute(question: str, answer: str, evidence: str) -> str:
     The answer or a cited sentence containing one of its numbers must name the
     property. For example, '32k tokens' from a context-size sentence cannot answer
     a batch-size request. A request for a training setting's value needs a number;
-    other answers without numbers are not checked.
+    other answers without numbers are not checked. A task listing several properties
+    ('corpus, batch size, steps and optimizer') skips the property check, since one
+    sentence rarely names them all; named benchmarks are still checked.
     """
+    properties = [
+        row for row in REQUESTED_PROPERTIES if re.search(row[1], question, re.IGNORECASE)
+    ]
+    requested = (properties if len(properties) == 1 else []) + [
+        row for row in NAMED_BENCHMARKS if re.search(row[1], question, re.IGNORECASE)
+    ]
     # Numbers repeated from the question, as in 'Mixtral 8x7B', are names, not values.
     numbers = extract_numbers(answer) - extract_numbers(question)
     if not numbers:
         asks_value = re.search(
             r"\b(?:what|which|how (?:many|much|large|big))\b", question, re.IGNORECASE
         ) and not re.search(r"\bwhy\b", question, re.IGNORECASE)
-        for label, pattern, _ in REQUESTED_ATTRIBUTES:
-            if (
-                asks_value
-                and label in NUMERIC_SETTINGS
-                and re.search(pattern, question, re.IGNORECASE)
-            ):
+        for label, _, _ in requested:
+            if asks_value and label in NUMERIC_SETTINGS:
                 return f"The requested {label} needs an explicit value, but the answer has none."
         return ""
     sentences = re.split(r"(?<=[.!?;])\s+", normalize_evidence_text(evidence))
     near_answer = " ".join(
         [answer] + [part for part in sentences if extract_numbers(part) & numbers]
     ).casefold()
-    for label, pattern, names in REQUESTED_ATTRIBUTES:
+    for label, _, names in requested:
         # Names are word prefixes, so 'optimi' matches optimizer but 'lr' skips 'already'.
-        if re.search(pattern, question, re.IGNORECASE) and not any(
-            re.search(r"\b" + re.escape(name), near_answer) for name in names
-        ):
+        if not any(re.search(r"\b" + re.escape(name), near_answer) for name in names):
             return f"No cited sentence states the answer's values as the requested {label}."
     return ""
 
 
 def build_abstention_response(reason: str) -> dict:
-    """Return an honest unavailable answer without attributed sources."""
+    """Return an honest unavailable answer without attributed sources.
+
+    Every abstention opens with "I don't know": the evaluator's judge can read a bare
+    'No matching evidence was found' as agreeing with a 'Not in the documents' ground
+    truth and mark it correct, which scores as an answer instead of an abstention.
+    """
+    if not reason.startswith("I don't know"):
+        reason = "I don't know - " + reason
     return {"kind": "answer", "status": "abstained", "answer": reason, "sources": []}
 
 
@@ -231,6 +277,43 @@ def find_literal_list_source(
         ):
             return row["id"]
     return None
+
+
+def find_number_sources(
+    answer: str,
+    missing: set[str],
+    task: dict,
+    task_index: int,
+    evidence: list[dict],
+    question: str,
+) -> tuple[set[str], str]:
+    """Find same-task passages that state numbers Gemma cited from the wrong label.
+
+    Each passage must pass the same scope and currency checks as a cited one, so a
+    number still has to appear in this detail's own retrieved text. Returns the
+    added labels and their eligible text, or nothing when any number stays missing.
+    """
+    paper = task.get("paper")
+    allowed_papers = paper if isinstance(paper, list) else [paper]
+    added, texts = set(), []
+    for row in evidence:
+        if not missing:
+            break
+        if task_index not in row.get("task_ids", []):
+            continue
+        if paper and row.get("title") not in allowed_papers:
+            continue
+        reason, eligible = check_explicit_answer_scope(
+            task["question"], [row["content"]], question
+        )
+        if reason or check_requested_currency(task["question"], answer, eligible):
+            continue
+        supplied = missing - find_unsupported_numbers(answer, eligible)
+        if supplied:
+            added.add(row["id"])
+            texts.append(eligible)
+            missing = missing - supplied
+    return (set(), "") if missing else (added, " ".join(texts))
 
 
 def generate_grounded_draft(
@@ -369,16 +452,25 @@ def verify_answer_citations(
             text = re.sub(r"(?m)^\s*\d+[.)]\s+", "", text)
             if not text.strip():
                 reason = "This detail contains no answer text."
-            unsupported = extract_numbers(text) - extract_numbers(supporting_text)
+            unsupported = find_unsupported_numbers(text, supporting_text)
             if unsupported:
-                alternative = None
+                alternative, extra_ids = None, set()
                 if not reason:
                     alternative = find_literal_list_source(
                         text, tasks[index], index, evidence,
                         question if len(tasks) == 1 else "",
                     )
+                if not reason and not alternative:
+                    # Gemma often cites the first passage although a later one holds the number.
+                    extra_ids, extra_text = find_number_sources(
+                        text, unsupported, tasks[index], index, evidence,
+                        question if len(tasks) == 1 else "",
+                    )
                 if alternative:
                     ids = {alternative}
+                elif extra_ids:
+                    ids = ids | extra_ids
+                    supporting_text += " " + extra_text
                 else:
                     reason = "Numbers absent from the cited passages: " + ", ".join(
                         sorted(unsupported)

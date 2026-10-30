@@ -129,6 +129,33 @@ def set_paper_aliases(document_id: str, aliases: list[str]) -> None:
         )
 
 
+# A first author follows the title within this many header characters; later
+# names are co-authors or citations ('Smith et al. 2022' in an abstract).
+FIRST_AUTHOR_WINDOW = 150
+# How much earlier one paper's header must show the surname than the next paper's.
+FIRST_AUTHOR_LEAD = 30
+
+
+def find_first_author_papers(query: str, papers: list[dict]) -> set[str]:
+    """Match 'Kaplan et al.' to the paper whose header names Kaplan first.
+
+    Only a whole-word surname right after the title counts, and only when one paper
+    clearly leads; otherwise the question keeps its other candidates.
+    """
+    found = set()
+    for surname in re.findall(r"\b([a-z][a-z'-]{3,})\s+et\s+al\b", query):
+        pattern = re.compile(rf"\b{re.escape(surname)}\b")
+        hits = sorted(
+            (match.start(), row["title"])
+            for row in papers
+            if (match := pattern.search(normalize_paper_reference(row.get("author_header", ""))))
+            and match.start() < FIRST_AUTHOR_WINDOW
+        )
+        if hits and (len(hits) == 1 or hits[1][0] - hits[0][0] >= FIRST_AUTHOR_LEAD):
+            found.add(hits[0][1])
+    return found
+
+
 def find_paper_references(question: str, papers: list[dict]) -> dict:
     """Find clear catalog identities and weaker candidates worth retrieving.
 
@@ -188,6 +215,9 @@ def find_paper_references(question: str, papers: list[dict]) -> dict:
                     if index == 0 and et_al:
                         first_author_candidates.add(row["title"])
                     break
+        if not author_candidates:
+            first_author_candidates = find_first_author_papers(query, papers)
+            author_candidates = set(first_author_candidates)
         if author_candidates:
             # Title fragments can match unrelated papers; prefer the explicit author.
             # "Smith et al." conventionally names the first author, if known.
@@ -214,6 +244,17 @@ def find_paper_references(question: str, papers: list[dict]) -> dict:
             "paper",
             "learning",
             "training",
+            # Question words: 'How does X' must not match '27_Does_RL_Really...'.
+            "does",
+            "do",
+            "did",
+            "how",
+            "why",
+            "what",
+            "which",
+            "when",
+            "where",
+            "who",
         }
         terms = set(normalize_paper_reference(question).split()) - common
         for row in papers:

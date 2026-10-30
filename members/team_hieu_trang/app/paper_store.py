@@ -83,6 +83,26 @@ def reset_paper_stores() -> None:
             pass
 
 
+def read_author_headers(store) -> dict[str, str]:
+    """Return the start of each paper's first section, where its title and authors sit.
+
+    The catalog has no author list, so 'Kaplan et al.' is matched against this text.
+    """
+    first = store.get(where={"page_start": 1}, include=["metadatas", "documents"])
+    parts: dict[str, dict[str, str]] = {}
+    for metadata, text in zip(first.get("metadatas") or [], first.get("documents") or []):
+        # The authors may follow a licence notice, so read the first two sections.
+        section = str(metadata.get("parent_id", "")).rpartition(":section:")[2]
+        if section in ("0", "1"):
+            # Drop the 'Paper: <file>' prefix that every chunk repeats.
+            body = text.split(metadata.get("title", ""), 1)[-1]
+            parts.setdefault(metadata.get("document_id"), {}).setdefault(section, body)
+    return {
+        document: " ".join(sections[key] for key in sorted(sections))[:1000]
+        for document, sections in parts.items()
+    }
+
+
 def list_indexed_papers() -> list[dict]:
     """Return one title/source card per paper currently represented in Chroma.
 
@@ -90,12 +110,15 @@ def list_indexed_papers() -> list[dict]:
     browser's sources list.
     """
 
-    records = open_chunk_store().get(include=["metadatas"])
+    store = open_chunk_store()
+    records = store.get(include=["metadatas"])
     catalog = {row["pdf_filename"].casefold(): row for row in load_paper_catalog()}
     aliases = load_local_aliases()
+    headers = read_author_headers(store)
     sources = {}
     for metadata in records["metadatas"]:
         sources[metadata["document_id"]] = {
+            "author_header": headers.get(metadata["document_id"], ""),
             **catalog.get(metadata["title"].casefold(), {}),
             "id": metadata["document_id"],
             "title": metadata["title"],
