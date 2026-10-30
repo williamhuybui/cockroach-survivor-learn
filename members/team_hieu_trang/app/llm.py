@@ -153,10 +153,8 @@ def request_structured_response(schema, instruction: str, payload: dict | str):
             else json.dumps(payload, ensure_ascii=False),
         ),
     ]
-    for attempt in range(2):
-        try:
-            return model.invoke(messages)
-        except Exception:  # Give a failed request one retry, then report the failure.
-            if attempt:
-                raise
-            sleep(1)
+    try:
+        return model.invoke(messages)
+    except Exception:  # Give a failed request one retry, then report the failure.
+        sleep(1)
+    return model.invoke(messages)

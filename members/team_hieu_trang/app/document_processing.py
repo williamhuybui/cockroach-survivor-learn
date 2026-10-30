@@ -558,10 +558,11 @@ def split_sections_into_chunks(
             separators=["\n\n", "\n", ". ", " ", ""],
         )
         pieces = splitter.split_text(section.text)
+        section_location = section.location
+        if section_path:
+            section_location += f": {section_path}"
         for number, piece in enumerate(pieces, 1):
-            location = section.location
-            if section_path:
-                location += f": {section_path}"
+            location = section_location
             if len(pieces) > 1:
                 location += f", part {number}"
             chunks.append(

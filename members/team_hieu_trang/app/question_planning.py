@@ -103,16 +103,12 @@ def focus_question_on_paper(question: str, title: str, papers: list[dict]) -> st
 
     focus = next(row for row in papers if row["title"] == title)
     names = sorted(catalog_identity_names(focus), key=len, reverse=True)
-    match = next(
-        (
-            found
-            for name in names
-            if len(name) >= 3
-            for found in [re.search(name_pattern(name), question, re.IGNORECASE)]
-            if found
-        ),
-        None,
-    )
+    match = None
+    for name in names:
+        if len(name) >= 3:
+            match = re.search(name_pattern(name), question, re.IGNORECASE)
+            if match:
+                break
     if not match:
         return f"For {title}: {question}"
     # Protect the intended subject when another paper has an overlapping name.

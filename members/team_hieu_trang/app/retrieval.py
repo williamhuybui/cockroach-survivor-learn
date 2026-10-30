@@ -266,25 +266,23 @@ def find_vector_candidates(
         include=["documents", "metadatas", "distances"],
         **paper_query_filter(paper),
     )
-    candidates = []
-    for chunk_id, content, metadata, distance in zip(
-        result["ids"][0],
-        result["documents"][0],
-        result["metadatas"][0],
-        result["distances"][0],
-    ):
-        candidates.append(
-            {
-                "id": chunk_id,
-                "content": content,
-                "title": metadata["title"],
-                "source_url": metadata["source_url"],
-                "location": metadata["location"],
-                "document_type": metadata["document_type"],
-                "vector_distance": distance,
-            }
+    return [
+        {
+            "id": chunk_id,
+            "content": content,
+            "title": metadata["title"],
+            "source_url": metadata["source_url"],
+            "location": metadata["location"],
+            "document_type": metadata["document_type"],
+            "vector_distance": distance,
+        }
+        for chunk_id, content, metadata, distance in zip(
+            result["ids"][0],
+            result["documents"][0],
+            result["metadatas"][0],
+            result["distances"][0],
         )
-    return candidates
+    ]
 
 
 def rerank_passage_candidates(query: str, candidates: list[dict]) -> list[dict]:

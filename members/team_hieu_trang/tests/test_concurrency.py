@@ -8,7 +8,9 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier, Event
 from types import SimpleNamespace
+from unittest.mock import Mock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app import db, llm, main, retrieval
@@ -97,6 +99,18 @@ def test_cached_chat_client_does_not_serialize_model_calls(monkeypatch):
             assert "evaluation" in futures[1].result(timeout=10)
     finally:
         llm.get_chat_model.cache_clear()
+
+
+def test_structured_response_retries_once_and_reports_second_failure(monkeypatch):
+    """A temporary model failure is retried; a second failure reaches the caller."""
+    invoke = Mock(side_effect=[RuntimeError("first"), RuntimeError("second")])
+    client = SimpleNamespace(with_structured_output=lambda *args, **kwargs: SimpleNamespace(invoke=invoke))
+    monkeypatch.setattr(llm, "get_chat_model", lambda: client)
+    monkeypatch.setattr(llm, "sleep", lambda _: None)
+
+    with pytest.raises(RuntimeError, match="second"):
+        llm.request_structured_response(DraftAnswer, "Use evidence", "Question")
+    assert invoke.call_count == 2
 
 
 def post_question(session_id, message):
