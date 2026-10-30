@@ -27,6 +27,14 @@ copy `.env.example` to `.env` first. Keep `client_secrets.json` and the saved
 `credentials.json` in this project folder. The old `GDRIVE_FOLDER_NAMES` setting
 is deliberately ignored so an old two-folder setup cannot broaden this sync.
 
+Set `MIN_RERANK_SCORE=1.5` in `.env`. Git does not track `.env`, so an existing
+copy keeps the old `0` until you change it; `.env.example` already has 1.5.
+Passages the reranker scores below this value are dropped, so an off-topic
+question reaches Gemma with no evidence and abstains instead of answering from
+loosely related text. Every answerable dev and unseen question scores above 1.6:
+a lower value lets more off-topic questions through, a higher one can drop real
+answers. Restart the server after changing it.
+
 ```powershell
 .\.venv-research\Scripts\python.exe -m app.drive_sync
 .\.venv-research\Scripts\python.exe -m app.ingest sources.local.json
