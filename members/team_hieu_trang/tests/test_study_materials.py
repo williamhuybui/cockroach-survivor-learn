@@ -12,7 +12,6 @@ import pytest
 from answer_fixtures import cited_draft
 
 from app import (
-    evaluate,
     grounding,
     ingest,
     paper_store,
@@ -162,15 +161,6 @@ def test_planner_receives_catalog_identity_and_reference_search_instructions(
         "How deeply should I read paper 42?", [], [paper]
     )
     assert result.tasks[0].paper is None
-
-
-def test_supporting_source_changes_invalidate_evaluation_resume(study_files):
-    before = evaluate.build_evaluation_configuration()
-    _, guide, _ = study_files
-    guide.write_text(guide.read_text() + "\n## Extra advice\nReview assumptions.\n")
-    after = evaluate.build_evaluation_configuration()
-    assert before["study_materials_sha256"] != after["study_materials_sha256"]
-    assert before["index_sha256"] == after["index_sha256"]
 
 
 def test_duplicate_catalog_numbers_are_rejected(study_files):

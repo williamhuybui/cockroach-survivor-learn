@@ -100,12 +100,16 @@ def test_some_answered_details_mean_partial_without_model_status(evidence, answe
         {"answer": "Alpha scored 99.9.", "source_ids": ["S1"]},
         {"answer": "Alpha scored 37.6.", "source_ids": ["S99"]},
         {"answer": "Alpha scored 37.6.", "source_ids": []},
-        {"answer": "Alpha scored 37.6.", "source_ids": ["S2"]},
+        {"answer": "Alpha trains small adapters.", "source_ids": ["S2"]},
         {"answer": "Alpha scored 37.6. [S99]", "source_ids": ["S1"]},
     ],
 )
 def test_invalid_detail_cannot_make_answer_complete(evidence, bad):
-    """Unknown citations, wrong scope and unsupported values are rejected independently."""
+    """Unknown citations, wrong scope and unsupported values are rejected independently.
+
+    A value answer citing only another task's label is repaired instead when this task's
+    own passage states the value (see the tests further below).
+    """
     result, checked = evaluate([bad], evidence)
     assert result["status"] == "abstained"
     assert result["sources"] == []
@@ -154,8 +158,8 @@ def test_citation_must_belong_to_this_detail_even_when_paper_is_unscoped(evidenc
     assert result["status"] == "abstained"
 
 
-def test_mixed_task_citations_are_not_silently_removed(evidence):
-    """A wrong-task citation rejects that answer, while another task can survive."""
+def test_wrong_task_label_is_dropped_when_this_tasks_passage_supports_the_answer(evidence):
+    """An extra label from another task does not discard an answer its own passage supports."""
     result, checked = evaluate(
         [
             {"answer": "Alpha scored 37.6.", "source_ids": ["S1", "S2"]},
@@ -163,10 +167,64 @@ def test_mixed_task_citations_are_not_silently_removed(evidence):
         ],
         evidence,
     )
-    assert result["status"] == "partial"
-    assert result["missing_tasks"] == ["Alpha score?"]
-    assert checked["rejected_count"] == 1
-    assert "Beta trains small adapters." in result["answer"]
+    assert result["status"] == "answered"
+    assert checked["accepted"][0]["source_ids"] == ["S1"]
+    assert result["answer"].startswith("Alpha scored 37.6. [S1]\n\n")
+
+
+def test_value_free_answer_with_a_wrong_task_label_is_still_rejected(evidence):
+    """Without a value to check, nothing verifies the remaining citation, so reject."""
+    evidence[0]["content"] = "Alpha is described in the paper."
+    result, checked = evaluate(
+        [{"answer": "Alpha trains small adapters.", "source_ids": ["S1", "S2"]}, {}], evidence
+    )
+    assert result["status"] == "abstained"
+    assert "outside this detail" in checked["rejections"][0]["reason"]
+
+
+def test_value_found_only_in_another_tasks_cited_passage_is_still_rejected(evidence):
+    """After the other task's label is dropped, its number cannot support this answer."""
+    evidence[1]["content"] = "Beta scored 41.2."
+    result, checked = evaluate(
+        [{"answer": "Alpha scored 41.2.", "source_ids": ["S1", "S2"]}, {}], evidence
+    )
+    assert result["status"] == "abstained"
+    assert "Numbers absent" in checked["rejections"][0]["reason"]
+
+
+def test_value_answer_citing_only_another_tasks_label_is_cited_to_its_own_passage(evidence):
+    """Gemma may cite only a sibling task's label; its own passage states the value, so cite that."""
+    result, checked = evaluate(
+        [{"answer": "Alpha scored 37.6.", "source_ids": ["S2"]}, {}], evidence
+    )
+    assert checked["rejections"] == []
+    assert checked["accepted"][0]["source_ids"] == ["S1"]
+    assert result["answer"].startswith("Alpha scored 37.6. [S1]")
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "Alpha scored 37.6. The year is unspecified.",
+        "The passage does not specify Alpha's score.",
+        "Alpha's score is not reported.",
+    ],
+)
+def test_answer_saying_the_fact_is_missing_is_not_an_answer(evidence, answer):
+    """Gemma should mark a missing fact unavailable; an answer saying it is missing does not count."""
+    result, checked = evaluate([{"answer": answer, "source_ids": ["S1"]}], evidence)
+    assert result["status"] == "abstained"
+    assert "not stated" in checked["rejections"][0]["reason"]
+
+
+def test_value_answer_citing_only_another_tasks_label_without_own_support_is_rejected(evidence):
+    """When the value is only in the other task's passage, the answer is still rejected."""
+    evidence[1]["content"] = "Beta scored 41.2."
+    result, checked = evaluate(
+        [{"answer": "Alpha scored 41.2.", "source_ids": ["S2"]}, {}], evidence
+    )
+    assert result["status"] == "abstained"
+    assert "Numbers absent" in checked["rejections"][0]["reason"]
 
 
 def test_exact_repeated_paragraphs_collapse_without_losing_citation(evidence):

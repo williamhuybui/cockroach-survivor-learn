@@ -11,3 +11,6 @@ synced_sources/
 requirements.lock.txt
 client_secrets.json
 credentials.json
+~$*
+question_set.csv
+reports/Evaluation_Report_2026-10-30.docx

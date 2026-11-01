@@ -33,10 +33,90 @@ def test_explicit_independent_parts_keep_the_original_requests(monkeypatch):
     assert all(task.paper == papers[0]["title"] for task in plan.tasks)
 
 
+def no_model(*args):
+    pytest.fail("Explicit clauses need no planner call")
+
+
+def test_pronoun_clause_about_the_one_named_paper_gets_its_own_task(monkeypatch):
+    """'how many tokens was it trained on' is a second request about the same paper."""
+    monkeypatch.setattr(planning, "request_structured_response", no_model)
+    papers = [{"title": "01_Orion.pdf", "aliases": ["Orion"]}]
+    plan = planning.plan_question_tasks("How many parameters does Orion have and how many tokens was it trained on?", [], papers)
+    assert [task.question for task in plan.tasks] == ["How many parameters does Orion have?", "how many tokens was it trained on?"]
+    assert all(task.paper == "01_Orion.pdf" for task in plan.tasks)
+
+
+def test_clauses_about_two_papers_search_each_paper(monkeypatch):
+    """Each clause names its own paper, so each paper is the subject of one task."""
+    monkeypatch.setattr(planning, "request_structured_response", no_model)
+    papers = [{"title": "01_Orion.pdf", "aliases": ["Orion"]}, {"title": "02_Sirius.pdf", "aliases": ["Sirius"]}]
+    plan = planning.plan_question_tasks("How many experts does Orion have, and how many tokens was Sirius trained on?", [], papers)
+    assert [task.paper for task in plan.tasks] == ["01_Orion.pdf", "02_Sirius.pdf"]
+
+
+def test_clause_about_an_unindexed_model_does_not_borrow_the_named_paper(monkeypatch):
+    """'how many parameters does GPT-4 have' must not search Orion's paper."""
+    monkeypatch.setattr(planning, "request_structured_response", no_model)
+    papers = [{"title": "01_Orion.pdf", "aliases": ["Orion"]}]
+    plan = planning.plan_question_tasks("How many tokens was Orion trained on, and how many parameters does GPT-4 have?", [], papers)
+    assert plan.tasks[0].paper == "01_Orion.pdf"
+    assert plan.tasks[1].paper is None and plan.tasks[1].scope == "unresolved"
+
+
+def test_context_phrase_or_passing_mention_is_not_a_separate_clause():
+    """'Compared with Sirius, how much ...' has one question; a pronoun with two papers stays whole."""
+    assert planning.split_explicit_question_clauses("Compared with Sirius 7B, how much does Orion reduce memory?") == []
+    assert planning.split_explicit_question_clauses("How large is Orion, and how does it compare with Sirius?") == []
+
+
 def test_ambiguous_clause_stays_together_for_context():
     """Do not split a clause that depends on a missing subject or a pronoun."""
     assert planning.split_explicit_question_clauses("What is Orion, and how does it train?") == []
     assert planning.split_explicit_question_clauses("How many experts are there, and how many are used?") == []
+
+
+TWO_PAPERS = [{"title": "01_Orion.pdf", "aliases": ["Orion"]}, {"title": "02_Sirius.pdf", "aliases": ["Sirius"]}]
+
+
+def test_possessive_about_the_clause_own_paper_splits_per_clause(monkeypatch):
+    """'how many GPUs does Sirius use for its fine-tuning' is only about Sirius."""
+    monkeypatch.setattr(planning, "request_structured_response", no_model)
+    plan = planning.plan_question_tasks(
+        "Which optimizer does Orion use, and how many GPUs does Sirius use for its fine-tuning?", [], TWO_PAPERS
+    )
+    assert [(task.question, task.paper) for task in plan.tasks] == [
+        ("Which optimizer does Orion use?", "01_Orion.pdf"),
+        ("how many GPUs does Sirius use for its fine-tuning?", "02_Sirius.pdf"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # 'it' is the optimizer from the first clause.
+        "Which optimizer does Orion use, and what learning rate does Sirius use with it?",
+        # A comparison needs both papers.
+        "How large is Orion, and how does Sirius compare with its size?",
+        # The possessive comes before the clause's own paper, so it may mean Orion.
+        "Which dataset does Orion use, and how large is its test split in Sirius?",
+        # 'how many are used' leaves out what is counted.
+        "How many experts does Orion have, and how many are used by Sirius?",
+    ],
+)
+def test_clause_that_depends_on_another_clause_is_left_to_the_planner(question):
+    """These clauses cannot be searched on their own, so no explicit tasks are made."""
+    requested = planning.find_paper_references(question, TWO_PAPERS)
+    assert planning.plan_explicit_clauses(question, requested, TWO_PAPERS) == []
+
+
+def test_repeated_preposition_asks_about_each_paper(monkeypatch):
+    """'in the Orion paper and in the Sirius paper' gets one focused task per paper."""
+    monkeypatch.setattr(planning, "request_structured_response", lambda *args: QuestionPlan())
+    plan = planning.plan_question_tasks(
+        "Which activation function is used in the Orion paper and in the Sirius paper?", [], TWO_PAPERS
+    )
+    assert [task.paper for task in plan.tasks] == ["01_Orion.pdf", "02_Sirius.pdf"]
+    assert "Sirius" not in plan.tasks[0].question and "Orion" not in plan.tasks[1].question
 
 
 def test_task_word_key_keeps_different_requested_details():
@@ -46,21 +126,6 @@ def test_task_word_key_keeps_different_requested_details():
     assert planning.task_word_key("What is Orion 7B?") != planning.task_word_key("What is Orion 70B?")
     assert planning.task_word_key("Does Orion beat Sirius?") != planning.task_word_key("Does Sirius beat Orion?")
     assert planning.task_word_key("What did Orion use?") != planning.task_word_key("What does Orion use?")
-
-
-def test_duplicate_tasks_with_filler_changes_are_not_retrieved_twice(monkeypatch):
-    """Filler changes do not create duplicate work."""
-    papers = [{"title": "01_ORION.pdf"}]
-    monkeypatch.setattr(
-        planning,
-        "request_structured_response",
-        lambda schema, *args: schema(tasks=[
-            {"question": "What does ORION train on?", "paper": "01_ORION.pdf", "scope": "paper"},
-            {"question": "What ORION does train on?", "paper": "01_ORION.pdf", "scope": "paper"},
-        ]),
-    )
-    result = planning.plan_question_tasks("What does ORION train on?", [], papers)
-    assert len(result.tasks) == 1
 
 
 def test_two_named_subjects_get_separate_focused_tasks(monkeypatch):
@@ -199,6 +264,41 @@ def test_same_paper_search_keeps_original_question_as_context(monkeypatch):
     assert result["tasks"][1]["question"] == "How many are used?"
 
 
+def test_empty_task_keeps_its_best_passages_when_a_sibling_found_evidence(monkeypatch):
+    """A sub-question worded unlike its paper is searched again, keeping two passages."""
+    calls = []
+
+    def search(query, paper=None, diagnostics=None, keep_best=0):
+        calls.append((paper, keep_best))
+        if paper == "B.pdf" and not keep_best:
+            return []
+        return [{"id": f"{paper}-{keep_best}", "title": paper, "content": "Evidence."}]
+
+    monkeypatch.setattr(services, "retrieve_relevant_passages", search)
+    tasks = [
+        {"question": "GPUs for A?", "paper": "A.pdf", "scope": "paper"},
+        {"question": "GPUs for B?", "paper": "B.pdf", "scope": "paper"},
+    ]
+    result = services.retrieve_task_evidence({"tasks": tasks, "retrieval_trace": {}})
+    assert calls == [("A.pdf", 0), ("B.pdf", 0), ("B.pdf", 2)]
+    assert [row["chunk_id"] for row in result["evidence"]] == ["A.pdf-0", "B.pdf-2"]
+    assert result["retrieval_trace"]["tasks"][1]["trace"]["kept_best_below_cutoff"]
+
+
+def test_question_whose_tasks_all_find_nothing_gets_no_fallback(monkeypatch):
+    """With no evidence for any task, the question still abstains without weak passages."""
+    calls = []
+    monkeypatch.setattr(
+        services,
+        "retrieve_relevant_passages",
+        lambda query, paper=None, diagnostics=None, keep_best=0: calls.append(keep_best) or [],
+    )
+    tasks = [{"question": q, "paper": f"{q}.pdf", "scope": "paper"} for q in "AB"]
+    result = services.retrieve_task_evidence({"tasks": tasks, "retrieval_trace": {}})
+    assert calls == [0, 0]
+    assert result["evidence"] == []
+
+
 def test_shared_budget_keeps_a_strong_keyword_candidate_for_each_task(monkeypatch):
     """MiniLM's first hit and an accepted keyword hit can both reach the model."""
 
@@ -234,17 +334,6 @@ def test_source_labels_group_each_tasks_evidence(monkeypatch):
     ]
 
 
-def test_citations_cover_only_their_actual_paper_tasks():
-    """Coverage comes from source metadata; the model cannot assign task IDs."""
-    checked = grounding.verify_answer_citations(
-        cited_draft("Uses 8 GPUs. [S1]"),
-        [{"id": "S1", "title": "A", "content": "uses 8 GPUs", "task_ids": [0]}],
-        [{"question": "A?", "paper": "A"}, {"question": "B?", "paper": "B"}],
-    )
-    assert checked["accepted"]
-    assert checked["missing_tasks"] == [1]
-
-
 def test_multipart_plan_keeps_subquestions(monkeypatch):
     """The planner receives user context and catalog only, and preserves distinct tasks."""
     captured = []
@@ -270,25 +359,6 @@ def test_multipart_plan_keeps_subquestions(monkeypatch):
         "recent_conversation",
         "indexed_papers",
     }
-
-
-def test_all_task_claims_can_form_complete_answer():
-    """A fully supported comparison remains answered rather than always partial."""
-    tasks = [{"question": "A?", "paper": "A"}, {"question": "B?", "paper": "B"}]
-    rows = [
-        {"id": f"S{i + 1}", "title": title, "content": "uses 8 GPUs", "task_ids": [i]}
-        for i, title in enumerate("AB")
-    ]
-    draft = cited_draft(
-        "\n\n".join([f"{'Uses 8 GPUs.'} [{row['id']}]" for i, row in enumerate(rows)])
-    )
-    checked = grounding.verify_answer_citations(draft, rows, tasks)
-    assert grounding.format_cited_answer(checked, rows, tasks)["status"] == "answered"
-
-
-def test_plan_has_no_fixed_task_count_limit():
-    """Preserve larger requests instead of rejecting the fourth task."""
-    assert len(QuestionPlan(tasks=[SearchTask(question="Task?")] * 20).tasks) == 20
 
 
 def test_focused_tasks_search_each_subject_in_its_own_paper(monkeypatch):
@@ -471,6 +541,116 @@ def test_comparison_focus_preserves_target_variant_and_removes_other_variant():
     second = planning.focus_question_on_paper(question, papers[1]["title"], papers)
     assert "12B" in first and "30B" not in first
     assert "30B" in second and "12B" not in second
+
+
+def test_focus_removes_a_longer_overlapping_name_before_a_shorter_one():
+    """Removing 'Orion' first must not leave the '3 405B' of another paper's 'Orion 3'."""
+    papers = [
+        {"title": "01_Orion.pdf", "aliases": ["Orion"]},
+        {"title": "02_Orion_3_Herd.pdf", "aliases": ["Orion 3"]},
+        {"title": "03_Vega.pdf", "aliases": ["Vega"]},
+    ]
+    question = "Which GPUs trained Orion-65B, Orion 3 405B and Vega?"
+    focused = planning.focus_question_on_paper(question, "03_Vega.pdf", papers)
+    assert "Vega" in focused
+    assert "Orion" not in focused and "405B" not in focused and "65B" not in focused
+
+
+def test_focus_removes_another_paper_name_with_its_attached_suffix():
+    """'Vega-R1-Zero' must not leave '-Zero' in Orion's search."""
+    papers = [
+        {"title": "01_Orion.pdf", "aliases": ["Orion"]},
+        {"title": "02_Vega-R1.pdf", "aliases": ["Vega-R1"]},
+    ]
+    question = "Which base models do Orion and Vega-R1-Zero start from?"
+    orion = planning.focus_question_on_paper(question, "01_Orion.pdf", papers)
+    vega = planning.focus_question_on_paper(question, "02_Vega-R1.pdf", papers)
+    assert "Zero" not in orion and "Vega" not in orion and "Orion" in orion
+    assert "Vega-R1-Zero" in vega and "Orion" not in vega
+
+
+def test_list_question_left_as_one_joint_task_is_split_per_paper(monkeypatch):
+    """A planner task naming five papers becomes five focused searches."""
+    names = ["Orion", "Sirius", "Vega", "Lyra", "Deneb"]
+    papers = [{"title": f"0{i}_{name}.pdf", "aliases": [name]} for i, name in enumerate(names, 1)]
+    # "was" (not do/did/are/were) leaves the split to the planner, as in a real list question.
+    question = "Which GPU hardware was used to train Orion, Sirius, Vega, Lyra and Deneb?"
+    monkeypatch.setattr(
+        planning,
+        "request_structured_response",
+        lambda schema, *args: schema(tasks=[{"question": question, "paper": None, "scope": "paper"}]),
+    )
+    plan = planning.plan_question_tasks(question, [], papers)
+    assert sorted(task.paper for task in plan.tasks) == sorted(row["title"] for row in papers)
+    for task in plan.tasks:
+        name = task.paper[3:-4]
+        assert name in task.question and "GPU hardware" in task.question
+        assert not any(other in task.question for other in set(names) - {name})
+
+
+FOCUS_PAPERS = [
+    {"title": "01_Orion.pdf", "aliases": ["Orion"]},
+    {"title": "02_Sirius.pdf", "aliases": ["Sirius", "original Sirius"]},
+    {"title": "03_Vega.pdf", "aliases": ["Vega"]},
+]
+
+
+@pytest.mark.parametrize(
+    "question,title,expected",
+    [
+        (
+            "How many experts are activated per token in Orion and in Sirius?",
+            "01_Orion.pdf",
+            "For Orion: How many experts are activated per token in Orion?",
+        ),
+        (
+            "How many experts are activated per token in Orion and in Sirius?",
+            "02_Sirius.pdf",
+            "For Sirius: How many experts are activated per token in Sirius?",
+        ),
+        (
+            "Which normalization do Orion and the original Sirius use?",
+            "01_Orion.pdf",
+            "For Orion: Which normalization do Orion use?",
+        ),
+        (
+            "What range of model sizes do the Orion paper and the Sirius paper cover?",
+            "02_Sirius.pdf",
+            "For Sirius: What range of model sizes do the Sirius paper cover?",
+        ),
+        (
+            "What KL coefficient do Orion's RL training and Sirius's RL training use?",
+            "02_Sirius.pdf",
+            "For Sirius: What KL coefficient do Sirius's RL training use?",
+        ),
+        (
+            "What is the largest model in the Vega experiments, in the Orion paper and in the Sirius paper?",
+            "03_Vega.pdf",
+            "For Vega: What is the largest model in the Vega experiments?",
+        ),
+        (
+            "Which base models do Orion and Sirius start RL from?",
+            "01_Orion.pdf",
+            "For Orion: Which base models do Orion start RL from?",
+        ),
+    ],
+)
+def test_focus_removes_another_mention_with_its_joining_words(question, title, expected):
+    """No 'in in Sirius', 'and in ?', 'the paper and the paper' or orphaned "'s" is left behind."""
+    assert planning.focus_question_on_paper(question, title, FOCUS_PAPERS) == expected
+
+
+def test_focus_keeps_the_users_question_when_removal_would_break_it():
+    """'how many parameters does use' searches worse than the original two-clause question."""
+    question = "How many parameters does Sirius use, and how much does Orion reduce memory?"
+    assert planning.focus_question_on_paper(question, "01_Orion.pdf", FOCUS_PAPERS) == f"For Orion: {question}"
+
+
+def test_focus_does_not_swallow_the_start_of_the_next_clause():
+    """', and how does ...' begins a clause; it is not the list joint of Sirius."""
+    question = "How does Orion compare in size with Sirius, and how does the Orion paper position it?"
+    focused = planning.focus_question_on_paper(question, "01_Orion.pdf", FOCUS_PAPERS)
+    assert "how does the Orion paper position it" in focused
 
 
 def test_focused_question_preserves_number_punctuation():

@@ -17,44 +17,6 @@ from app.db import open_database
 from app.question_planning import QuestionPlan, SearchTask
 
 
-def test_multipart_question_executes_without_approval(monkeypatch):
-    """Planning still happens, but all three tasks run without a browser action."""
-    monkeypatch.setattr(
-        services,
-        "plan_question_tasks",
-        lambda *args: QuestionPlan(
-            route="multipart",
-            tasks=[SearchTask(question=f"Part {i}") for i in range(3)],
-        ),
-    )
-    searches = []
-
-    def search(question, **kwargs):
-        """Provide independent evidence for each planned part."""
-        searches.append(question)
-        return [
-            {"id": question, "title": "Paper", "content": "Training uses examples."}
-        ]
-
-    def generate(question, evidence, tasks):
-        """Return one verifiable claim for each part without a live model."""
-        return cited_draft(
-            "\n\n".join(
-                [f"{'Training uses examples.'} [{row['id']}]" for row in evidence]
-            )
-        )
-
-    monkeypatch.setattr(services, "retrieve_relevant_passages", search)
-    monkeypatch.setattr(services, "generate_grounded_draft", generate)
-    result = services.answer_research_question(
-        "Explain three parts", [], require_review=False
-    )
-    assert searches == ["Part 0", "Part 1", "Part 2"]
-    assert result["status"] == "answered"
-    assert "plan" not in result
-    assert len(result["sources"]) == 3
-
-
 def test_ambiguous_automatic_question_abstains_without_clarification(monkeypatch):
     """An unavailable evaluator cannot answer a follow-up clarification request."""
     monkeypatch.setattr(

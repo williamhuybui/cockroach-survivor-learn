@@ -103,6 +103,40 @@ def test_reranker_rejects_weak_matches(monkeypatch):
     assert [row["id"] for row in result] == ["b", "c"]
 
 
+def test_keep_best_applies_only_when_nothing_passes_the_cutoff(monkeypatch):
+    """A requested fallback keeps the strongest weak passages, never extra ones."""
+    from app import retrieval
+
+    rows = [{"id": key, "content": key} for key in "abc"]
+    monkeypatch.setattr(retrieval, "MIN_RERANK_SCORE", 1.5)
+    monkeypatch.setattr(retrieval, "get_reranker_model", lambda: SimpleNamespace(predict=lambda pairs: [-5, 1, -1]))
+    assert retrieval.rerank_passage_candidates("question", rows) == []
+    weak = retrieval.rerank_passage_candidates("question", rows, keep_best=2)
+    assert [row["id"] for row in weak] == ["b", "c"]
+    monkeypatch.setattr(retrieval, "get_reranker_model", lambda: SimpleNamespace(predict=lambda pairs: [-5, 4, 1]))
+    strong = retrieval.rerank_passage_candidates("question", rows, keep_best=2)
+    assert [row["id"] for row in strong] == ["b"]
+
+
+def test_search_over_several_papers_uses_a_lower_cutoff_than_a_one_paper_search(monkeypatch):
+    """A compound question scores lower against each paper, so its per-paper searches keep slightly weaker passages."""
+    from app import retrieval
+
+    rows = [
+        {"id": "a", "title": "A.pdf", "content": "A passage"},
+        {"id": "b", "title": "B.pdf", "content": "B passage"},
+    ]
+    monkeypatch.setattr(retrieval, "MIN_RERANK_SCORE", 1.5)
+    # 1.2 is below the cutoff of 1.5 but above 1.5 - JOINT_TASK_CUTOFF_REDUCTION (1.0).
+    monkeypatch.setattr(retrieval, "get_reranker_model", lambda: SimpleNamespace(predict=lambda pairs: [1.2] * len(pairs)))
+    monkeypatch.setattr(retrieval, "find_hybrid_candidates", lambda query, paper: [r for r in rows if r["title"] == paper])
+    monkeypatch.setattr(retrieval, "expand_defined_abbreviations", lambda query, paper: query)
+    monkeypatch.setattr(retrieval, "expand_parent_section_windows", lambda items, limit: items[:limit])
+    assert retrieval.retrieve_relevant_passages("Compare A and B?", paper="A.pdf") == []
+    joint = retrieval.retrieve_relevant_passages("Compare A and B?", paper=["A.pdf", "B.pdf"])
+    assert [row["id"] for row in joint] == ["a", "b"]
+
+
 def test_no_cutoff_keeps_negative_scores_and_does_not_guess_identity(monkeypatch):
     """Rank negative scores, but keep ambiguous paper identities unresolved."""
     from app import retrieval

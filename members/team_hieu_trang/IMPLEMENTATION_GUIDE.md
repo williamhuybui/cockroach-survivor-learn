@@ -1,10 +1,5 @@
 # Junior developer guide to the research agent
 
-Evaluation instrumentation: read `evaluation_metrics.py` after `evaluate.py`.
-It scores private reviewed evidence requirements at the candidate and final-context
-stages and summarizes latency. `EVALUATION_GUIDE.md` explains the label format,
-stage audits, cold/warm measurement and human review. Retrieval settings are unchanged.
-
 ## 1 Code tree
 
 Each application file starts with a short explanation of its role in the flow.
@@ -35,6 +30,10 @@ app/
   retrieval.py               Dense search, Python BM25, reranking and parent expansion
   services.py                Conditional graph, command routing and quiz generation
   grounding.py               Structured claims, verification and answer formatting
+  answer_scope.py            Benchmark-edition and model-variant checks on cited text
+  stage_scope.py             Checks that a number belongs to the training stage asked about
+  premise_search.py          Finds the sentence that rules out a question's false premise
+  paper_catalog.py           Paper names, aliases, authors and title references
   llm.py                     Shared model calls with task-specific instructions
   main.py                    Browser routes and saved conversations
   quiz_validation.py         Quiz data contracts, command parsing and grading
@@ -42,8 +41,6 @@ app/
   db.py                      SQLite transactions, cleanup and unique IDs
   schema.sql                 SQLite table definitions
   cli.py                     init-db command
-  evaluate.py                Generic offline evaluation and checkpointed reports
-  review_evaluations.py      Human review CSV export and import
   static/
     index.html               Chat interface and quiz dialogs
     style.css                Layout and appearance
@@ -53,7 +50,6 @@ sources.local.json           Generated source manifest
 synced_sources/drive/        Downloaded PDFs
 data/chroma/                 Local child vectors and parent sections
 data/app.sqlite3             Chat, quizzes, settings and index-run summaries
-data/evaluations/            Evaluation reports and human reviews
 ```
 
 `.env`, Google OAuth files and virtual environments are local setup, not the
@@ -340,16 +336,6 @@ submitted answers. `services.create_and_save_quiz()` saves the answer key server
 creates quizzes through chat; submission routes remain available to the UI.
 There is no separate manual research-filter API or standalone quiz creation route.
 
-`evaluate.py` accepts any CSV with unique id and question columns. Only questions
-enter the agent. Reference labels remain private to scoring. Results are saved
-after each case and failed cases can be retried with resume. Code, model settings
-and indexed IDs/fingerprints are recorded; changed configurations cannot resume
-an old report. Use a new filename after this workflow upgrade.
-
-`review_evaluations.py` exports answers to a review CSV, validates imported review
-fields, and updates metrics. Unreviewed correctness is unknown, not zero or perfect.
-Human review still measures whether quotes actually support the claims.
-
 ## 6 Run and inspect the application
 
 From the project folder, use the project Python or activate its environment:
@@ -361,10 +347,9 @@ From the project folder, use the project Python or activate its environment:
 .\.venv-research\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
-Open `http://127.0.0.1:8000`. Inspect retrieval without answer generation:
+Open `http://127.0.0.1:8000`. Run the automated tests:
 
 ```powershell
-.\.venv-research\Scripts\python.exe -m app.retrieval "What is attention?"
 .\.venv-research\Scripts\python.exe -m pytest -q
 ```
 

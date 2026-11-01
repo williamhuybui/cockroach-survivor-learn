@@ -24,6 +24,11 @@ from .grounding import (
 from .llm import generate_from_evidence
 from .paper_catalog import find_named_source_papers
 from .paper_store import list_indexed_papers
+from .premise_search import (
+    add_premise_corrections,
+    find_premise_ruling,
+    format_premise_correction,
+)
 from .question_planning import (
     QuestionPlan,
     plan_question_tasks,
@@ -106,7 +111,7 @@ def create_and_save_quiz(request: QuizRequest) -> dict:
     return {"kind": "quiz", "quiz_id": quiz_id, **hide_quiz_answer_key(payload)}
 
 
-WORKFLOW_VERSION = "separate-paper-search-v15"
+WORKFLOW_VERSION = "separate-paper-search-v16"
 
 
 class ChatState(TypedDict, total=False):
@@ -119,9 +124,11 @@ class ChatState(TypedDict, total=False):
 
     message: str
     history: list[dict]
+    papers: list[dict]
     tasks: list[dict]
     clarification: str
     evidence: list[dict]
+    premise_corrections: list[dict]
     draft: DraftAnswer
     verification: dict
     result: dict
@@ -191,6 +198,7 @@ def plan_search_tasks(state: ChatState) -> dict:
     else:
         approval_mode = "automatic_offline"
     return {
+        "papers": papers,
         "tasks": tasks,
         "awaiting_approval": review,
         "deferred_tasks": deferred,
@@ -240,8 +248,8 @@ def retrieve_task_evidence(state: ChatState) -> dict:
         and isinstance(tasks[0].get("paper"), str)
         and all(task.get("paper") == tasks[0]["paper"] for task in tasks)
     )
-    groups, runs = [], []
-    for task in tasks:
+    groups, runs, rulings = [], [], {}
+    for task_id, task in enumerate(tasks):
         trace: dict = {"capture_evidence": state.get("capture_evidence", False)}
         if task.get("scope") == "unresolved":
             groups.append([])
@@ -270,8 +278,32 @@ def retrieve_task_evidence(state: ChatState) -> dict:
                 passages = [passages[0], keyword] + [
                     row for row in passages[1:] if row["id"] != keyword["id"]
                 ]
+        # A question that takes something for granted may be answered by the sentence in
+        # its own paper that rules that thing out. Retrieval rarely finds it, because the
+        # question is worded like the passages that describe the thing, not its absence.
+        ruling = (
+            find_premise_ruling(task["question"], task["paper"], state.get("papers"))
+            if task.get("scope") == "paper" and isinstance(task.get("paper"), str)
+            else None
+        )
+        if ruling:
+            passages = [ruling["passage"]] + [
+                row for row in passages if row["id"] != ruling["passage"]["id"]
+            ]
+            trace["premise_ruling"] = {"sentence": ruling["sentence"], "terms": ruling["terms"]}
+            rulings[task_id] = ruling
         groups.append(passages)
-        runs.append({"task": task, "trace": trace})
+        runs.append({"task": task, "trace": trace, "query": query})
+    # A sub-question phrased unlike its paper can score below the reranker cutoff
+    # even when its sibling tasks found evidence. Search it again and keep its two
+    # best passages; a question whose tasks all find nothing still abstains.
+    if any(groups):
+        for task_id, (task, run) in enumerate(zip(tasks, runs)):
+            if not groups[task_id] and task.get("scope") == "paper" and task.get("paper"):
+                groups[task_id] = retrieve_relevant_passages(
+                    run["query"], paper=task["paper"], diagnostics=run["trace"], keep_best=2
+                )
+                run["trace"]["kept_best_below_cutoff"] = True
     # Round-robin selection gives each task a chance before spending the budget.
     remaining, evidence = CONTEXT_CHARACTERS, {}
     task_budget = CONTEXT_CHARACTERS // max(1, sum(bool(group) for group in groups))
@@ -295,6 +327,25 @@ def retrieve_task_evidence(state: ChatState) -> dict:
     # Gemma sees contiguous labels for each task, while shared evidence stays once.
     ordered = sorted(evidence.values(), key=lambda row: min(row["task_ids"]))
     passages = assign_citation_labels(ordered)
+    # Answer a task with its ruling sentence only if that passage kept a source label.
+    corrections = []
+    for task_id, ruling in rulings.items():
+        label = next(
+            (
+                row["id"]
+                for row in passages
+                if row["chunk_id"] == ruling["passage"]["id"] and task_id in row["task_ids"]
+            ),
+            None,
+        )
+        if label:
+            corrections.append(
+                {
+                    "task_index": task_id,
+                    "answer": format_premise_correction(ruling["sentence"]),
+                    "source_ids": [label],
+                }
+            )
     trace = {**state["retrieval_trace"], "tasks": runs, "evidence_count": len(passages)}
     for field in ("candidate_sources", "reranked_sources"):
         trace[field] = sorted(
@@ -311,18 +362,24 @@ def retrieve_task_evidence(state: ChatState) -> dict:
     return {
         "tasks": tasks,
         "evidence": passages,
+        "premise_corrections": corrections,
         "retrieval_trace": trace,
         "timings": {**state.get("timings", {}), "retrieval": perf_counter() - started},
     }
 
 
 def choose_route_after_retrieval(state: ChatState) -> str:
-    """Generate an answer only when retrieval returned evidence.
+    """Generate an answer only when retrieval returned evidence a task still needs.
 
     An empty evidence list goes directly to response formatting, which returns an
-    explicit no-evidence response without asking Gemma to guess.
+    explicit no-evidence response without asking Gemma to guess. When quoted premise
+    corrections answer every task, Gemma has nothing to add and could only restate
+    the false premise, so verification runs on an empty draft.
     """
-    return "generate" if state["evidence"] else "format_response"
+    if not state["evidence"]:
+        return "format_response"
+    corrections = state.get("premise_corrections", [])
+    return "verify" if corrections and len(corrections) == len(state["tasks"]) else "generate"
 
 
 def generate_answer_draft(state: ChatState) -> dict:
@@ -344,12 +401,17 @@ def verify_answer_draft(state: ChatState) -> dict:
     """Validate answer citations and numeric values once, without another model call."""
     started = perf_counter()
     checked = verify_answer_citations(
-        state["draft"],
+        # No draft means premise corrections answer every task (see the retrieval route).
+        state.get("draft", DraftAnswer()),
         state["evidence"],
         state["tasks"],
         question=state["message"],
-        source_papers=find_named_source_papers(state["message"], list_indexed_papers()),
+        source_papers=find_named_source_papers(
+            state["message"], state.get("papers") or list_indexed_papers()
+        ),
     )
+    if state.get("premise_corrections"):
+        checked = add_premise_corrections(checked, state["premise_corrections"])
     return {
         "verification": checked,
         "timings": {**state["timings"], "verification": perf_counter() - started},
@@ -359,6 +421,7 @@ def verify_answer_draft(state: ChatState) -> dict:
                 "accepted_detail_count": len(checked["accepted"]),
                 "rejected_count": checked["rejected_count"],
                 "rejections": checked["rejections"],
+                "repairs": checked.get("repairs", []),
             },
         },
     }
@@ -405,10 +468,12 @@ def build_chat_response(state: ChatState) -> dict:
             run["trace"].get("scope_ambiguous")
             for run in state.get("retrieval_trace", {}).get("tasks", [])
         )
+        # The gateway contract's own wording: the judge reads it as an abstention,
+        # while "No matching evidence was found" was sometimes graded as an answer.
         result = build_abstention_response(
             "Several indexed papers remain plausible; the evidence does not identify a single requested paper."
             if ambiguous
-            else "No matching research-paper evidence was found for this question."
+            else "this is not in the documents."
         )
     else:
         result = format_cited_answer(
@@ -419,7 +484,7 @@ def build_chat_response(state: ChatState) -> dict:
     if state.get("deferred_tasks"):
         if not state.get("evidence"):
             result["answer"] = (
-                "No matching evidence was found for the tasks in this execution batch."
+                "I don't know - no matching evidence was found for the tasks in this execution batch."
             )
         if interactive:
             result["answer"] += (
@@ -469,6 +534,7 @@ def create_plan_proposal(question: str, tasks: list[dict], route: str) -> dict:
 
 # Each node returns updates to ChatState; conditional edges choose the next node.
 # Plan -> clarify/review OR retrieve -> no-evidence response OR generate -> verify.
+# Retrieval skips generation when premise corrections answer every task.
 workflow = StateGraph(ChatState)
 workflow.add_node("plan", plan_search_tasks)
 workflow.add_node("retrieve", retrieve_task_evidence)
@@ -484,7 +550,7 @@ workflow.add_conditional_edges(
 workflow.add_conditional_edges(
     "retrieve",
     choose_route_after_retrieval,
-    {name: name for name in ("generate", "format_response")},
+    {name: name for name in ("generate", "verify", "format_response")},
 )
 workflow.add_edge("generate", "verify")
 workflow.add_edge("verify", "format_response")

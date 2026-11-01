@@ -21,6 +21,11 @@ CANDIDATE_COUNT = 24
 EVIDENCE_COUNT = 5
 # All tasks share this character allowance for passage text sent to the answer model.
 CONTEXT_CHARACTERS = 14000
+# A task over several papers searches each of them with the whole compound question, such as
+# "How does Orion fix a weakness of Sirius?". MiniLM scores that wording
+# lower against any one paper's passages than a question about that paper alone, so these
+# searches accept passages slightly below MIN_RERANK_SCORE. One-paper tasks keep the full cutoff.
+JOINT_TASK_CUTOFF_REDUCTION = 0.5
 
 # Load weights once per process. This lock is never held while scoring passages.
 _reranker_model = None
@@ -285,10 +290,14 @@ def find_vector_candidates(
     ]
 
 
-def rerank_passage_candidates(query: str, candidates: list[dict]) -> list[dict]:
+def rerank_passage_candidates(
+    query: str, candidates: list[dict], keep_best: int = 0, cutoff_reduction: float = 0.0
+) -> list[dict]:
     """Score each question/chunk pair and sort candidates by relevance.
 
     Scores indicate relevance, not the probability that an answer is correct.
+    Keep candidates scoring at least MIN_RERANK_SCORE minus cutoff_reduction. When
+    none does, return the keep_best highest.
     """
 
     if not candidates:
@@ -296,12 +305,17 @@ def rerank_passage_candidates(query: str, candidates: list[dict]) -> list[dict]:
     scores = get_reranker_model().predict(
         [(query, row["content"]) for row in candidates]
     )
-    scored = [
-        {**row, "rerank_score": float(score)}
-        for row, score in zip(candidates, scores)
-    ]
-    ranked = [row for row in scored if MIN_RERANK_SCORE is None or row["rerank_score"] >= MIN_RERANK_SCORE]
-    return sorted(ranked, key=lambda row: row["rerank_score"], reverse=True)
+    scored = sorted(
+        (
+            {**row, "rerank_score": float(score)}
+            for row, score in zip(candidates, scores)
+        ),
+        key=lambda row: row["rerank_score"],
+        reverse=True,
+    )
+    cutoff = None if MIN_RERANK_SCORE is None else MIN_RERANK_SCORE - cutoff_reduction
+    ranked = [row for row in scored if cutoff is None or row["rerank_score"] >= cutoff]
+    return ranked or scored[:keep_best]
 
 
 def retrieve_relevant_passages(
@@ -310,6 +324,8 @@ def retrieve_relevant_passages(
     paper: str | list[str] | None = None,
     diagnostics: dict | None = None,
     resolve_candidates: bool = False,
+    keep_best: int = 0,
+    cutoff_reduction: float = 0.0,
 ) -> list[dict]:
     """Run hybrid retrieval, neural reranking and section expansion for one question.
 
@@ -317,6 +333,8 @@ def retrieve_relevant_passages(
     searched one paper at a time, then interleaved to give each an early chance.
     Optional diagnostics record stage timings and intermediate passages. Set
     resolve_candidates only for an uncertain identity, which needs joint discovery.
+    keep_best keeps that many top passages when none reaches the reranker cutoff.
+    Each paper of a verified paper set is searched with JOINT_TASK_CUTOFF_REDUCTION.
     """
 
     if isinstance(paper, list) and not resolve_candidates:
@@ -331,7 +349,12 @@ def retrieve_relevant_passages(
             }
             groups.append(
                 retrieve_relevant_passages(
-                    query, limit=limit, paper=title, diagnostics=trace
+                    query,
+                    limit=limit,
+                    paper=title,
+                    diagnostics=trace,
+                    keep_best=keep_best,
+                    cutoff_reduction=JOINT_TASK_CUTOFF_REDUCTION,
                 )
             )
             traces.append(trace)
@@ -381,7 +404,11 @@ def retrieve_relevant_passages(
     candidates = find_hybrid_candidates(search_query, paper)
     retrieved_at = perf_counter()
     # Score the small child chunks first, then add surrounding section context.
-    ranked = rerank_passage_candidates(search_query, candidates)
+    # Pass optional settings only when used, so simple test doubles keep working.
+    options = {"keep_best": keep_best} if keep_best else {}
+    if cutoff_reduction:
+        options["cutoff_reduction"] = cutoff_reduction
+    ranked = rerank_passage_candidates(search_query, candidates, **options)
     ranked_at = perf_counter()
     usable = ranked
     resolved_paper = None
@@ -453,17 +480,3 @@ def select_daily_paper_passages(day_number: int) -> list[dict]:
             }
         )
     return evidence
-
-
-if __name__ == "__main__":
-    import argparse
-    import json
-
-    parser = argparse.ArgumentParser(
-        description="Inspect retrieved evidence without generating an answer"
-    )
-    parser.add_argument("query")
-    args = parser.parse_args()
-    print(
-        json.dumps(retrieve_relevant_passages(args.query), indent=2, ensure_ascii=False)
-    )

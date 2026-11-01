@@ -1,9 +1,5 @@
 # Team Research Agent
 
-For reviewed evidence coverage, stage audits and P50/P95 latency measurement,
-see [EVALUATION_GUIDE.md](EVALUATION_GUIDE.md). Relevance labels stay offline;
-questions without them still run with unscored evidence metrics.
-
 Ask questions about PDF papers in one Google Drive folder. Answers cite the
 paper and page/section. The existing chat UI, Markdown export, custom quizzes
 and daily challenge remain available in a single-user workspace.
@@ -85,34 +81,89 @@ PDF rebuild can continue. For a custom manifest, set `SOURCE_MANIFEST_PATH` in
 4. EmbeddingGemma embeds batches of 16 child chunks. Chroma stores child vectors
    for search and complete parent sections for answer context, plus Drive links,
    page locations and document fingerprints.
-5. Simple questions skip the planner model call and run as one task. Questions
-   that list several items ("A, B and C", "each", "both") or name a paper go to
-   the planner, which writes self-contained sub-questions. A task that names
-   exactly one indexed paper is searched in that paper only. The browser shows
-   Approve and Revise for multi-task plans; unattended callers (the evaluation
-   gateway) never get a clarification and run every task.
+5. The planner model writes self-contained search tasks. A question whose
+   clauses each start with a question word is split without a model call when
+   each clause names its own paper, or the question names one paper ("How many
+   parameters does X have and how many tokens was it trained on?"); a clause
+   about an unindexed model (GPT-4) stays unresolved. With several papers, a
+   clause with a pronoun is split only when it is about the one paper it names:
+   "its" after that name ("how many examples does ReAct use in its prompts").
+   "with it", "they", a comparison ("compare", "than", "both") or "how many are
+   used" leaves the question to the planner model. A task that names exactly
+   one indexed paper is searched in that paper only. A paper without a short name
+   is also named by the first words of its title plus "paper" ("the Scaling Laws
+   paper"); a bare "scaling laws" names nothing. A question about each of
+   several named papers ("each", "Which X do A and B use?", a repeated preposition
+   as in "in the A paper and in the B paper"), or a planned task
+   that names three or more papers, becomes one focused task per paper; the other
+   papers' mentions leave with their prepositions, articles and list joints ("in
+   A and in B"), and a removal that would break the question keeps the user's own
+   wording instead. A task
+   naming two papers stays joint: the second is often only a baseline or model
+   mentioned in passing ("LoRA ... for GPT-3 175B"). The browser shows Approve and
+   Revise for multi-task plans; unattended callers (the evaluation gateway) never
+   get a clarification and run every task.
 6. Every task uses the same hybrid search: EmbeddingGemma vectors, Chroma cosine
    search and Python BM25. Exact-paper filtering happens before dense top-k.
    A local MiniLM cross-encoder reranks candidates before parent expansion.
    A task with no passage above the threshold keeps its two best passages when
    sibling tasks found evidence.
-7. Up to eight 1,200-character windows per task share one 10,000-character
-   budget (about 2.5k prompt tokens; CPU prefill costs about 16 s per 1k tokens).
-   Shared passages keep task associations and receive citation labels once.
-8. One Gemma call writes at most four claims with short exact quotes. The
-   verifier then checks each claim without another model call: the quote must
-   exist (case and PDF hyphenation ignored) and relate to the claim, numbers must
-   appear in the quote, a year/version/size named by the task (2019, 8x7B) must
-   appear in the cited passage, and a difference ("by more than 2.0") must not be
-   stated as a value. A claim citing the wrong sentence is repaired from a
-   supporting sentence of the same paper. When an abstract and a body passage give
-   different numbers for the same result, the abstract value is kept.
-9. Answers contain only verified claims. If none survive, the answer is
-   "I don't know - this is not in the documents." Unverified tasks are listed
-   in `missing_tasks`, not in the answer text.
+7. Each task keeps up to five section windows of at most 2,400 characters, and
+   all tasks share one 14,000-character budget (about 3.5k prompt tokens; CPU
+   prefill costs about 16 s per 1k tokens). Shared passages keep task
+   associations and receive citation labels once.
+8. A task that takes something for granted ("Why does X use Y?", "Which Y does X
+   train?", "How large is the Y that X trains?") also gets a premise search with
+   no model call. `premise_search.py` reads the task's paper section by section for
+   a sentence of the paper's own model (naming it, or its authors in the abstract,
+   introduction or conclusion) where "without", "dispensing with", "foregoes",
+   "avoids", "free of", "no" or "does not use" is followed within three words by Y.
+   References, acknowledgements and experiment or ablation sections are skipped,
+   as are "without compromising Y", a negated cue ("do not eliminate Y"), "with
+   and without Y" and a Y that the sentence continues into another noun the question
+   never used ("without activation checkpointing" rules out no activation
+   function). Such a sentence is added first to the task's evidence and
+   answers the task as a quoted correction ("This question assumes something the
+   paper rules out. The paper states: ... [S1]"); when every task is corrected,
+   Gemma is not called. Without such a sentence the question continues unchanged.
+9. One Gemma call answers each task in its own record with source labels; no
+   quotes are required. The verifier checks every record without another model
+   call: its labels must belong to that task and paper (an extra label from
+   another task is dropped only when the answer's values are found in the task's
+   own passages), a benchmark year or model size named by the task (2019, 8x7B)
+   must appear in the cited text, a requested currency must match, every number
+   must appear in the cited passages (2.5B equals 2,500M; a passage's "eight"
+   supports 8; a per-unit value cannot be given as a total that the passage also
+   states), the values must be stated for a requested property (batch size,
+   vocabulary, context length, layers, attention heads, temperature, latency,
+   random seed, number of raters, BLEU, GSM8K; "NVIDIA Quadro RTX8000" counts as
+   hardware), a one-part "which optimizer / hardware / tokenizer / positional
+   encoding / normalization / activation" question must be answered with one by
+   name ("Orion uses multi-head attention" names no optimizer; naming one does not
+   prove the citation supports it), a request for GPU or TPU hours must be answered in that unit,
+   a value requested for one training stage (pre-training, fine-tuning,
+   post-training, context extension, reward modeling, reinforcement learning) must
+   not be tied by the cited text to another stage or, for a paper that gives that
+   stage its own figure in the same unit, to the whole run (`stage_scope.py`; it
+   binds each number to its own clause, a scope clause such as "For fine-tuning,",
+   the one stage its sentence names or the section heading, accepts any number
+   that nothing ties to another stage, and does not read "the entire training
+   dataset" as the whole run). A rejected whole-run total is replaced by the
+   sentence that states the asked stage's own figure when the passages break the
+   total into stage figures that add up to it, the figure is the stage's only one
+   in the unit the question names (not a rate such as "per trillion tokens"), and
+   that sentence passes all of these checks itself. A value written as a word ("a single
+   epoch") counts when the cited text states it, and "according to the X paper"
+   needs a citation from paper X: for every task when the question opens with it,
+   otherwise only for the tasks about paper X ("Which algorithm does A use, and
+   which does the X paper introduce?" lets A's task cite A).
+10. Answers contain only verified records; unanswered tasks are listed under
+   "Missing information". With no evidence the answer is "I don't know - this is
+   not in the documents."; when no record survives verification it is "I don't
+   know - the retrieved documents do not provide a supported answer ...".
 
-The reranker threshold defaults to raw score `0`, a starting setting that needs
-evaluation on your papers. Scores are not probabilities. This version uses dense
+Without `MIN_RERANK_SCORE` no cutoff is applied; `.env.example` sets 1.5 (see
+Run). Scores are not probabilities. This version uses dense
 retrieval, BM25 keyword retrieval, a neural reranker and parent-section context.
 It deliberately does not use RRF: the neural reranker makes the final comparison.
 Reranking cannot recover a paper missing from the candidate pool.
@@ -146,230 +197,20 @@ After changing the embedding model, dimensions, or chunking rules:
 ingesting or rebuilding; this small app does not coordinate concurrent index
 writers. Back up `data/` before an intentional rebuild if you need rollback.
 
-## Test and inspect
+## Test
 
 ```powershell
 .\.venv-research\Scripts\python.exe -m pytest -q
-.\.venv-research\Scripts\python.exe -m app.retrieval "How does RAG-Token work?"
-.\.venv-research\Scripts\python.exe -m app.evaluate path\to\cases.csv --output data\evaluations\run.json
-# Continue an interrupted local benchmark without repeating saved answers.
-.\.venv-research\Scripts\python.exe -m app.evaluate path\to\cases.csv --output data\evaluations\run.json --resume
-# Limit a run to a small restartable batch on memory-constrained machines.
-.\.venv-research\Scripts\python.exe -m app.evaluate path\to\cases.csv --output data\evaluations\run.json --resume --max-cases 5
-# Give a reviewer a spreadsheet with answers, citations and empty review fields.
-.\.venv-research\Scripts\python.exe -m app.review_evaluations export data\evaluations\run.json data\evaluations\review.csv
-# Import the completed review CSV and recalculate reviewed accuracy/support metrics.
-.\.venv-research\Scripts\python.exe -m app.review_evaluations import data\evaluations\run.json data\evaluations\review.csv
 ```
-
-The retrieval command prints evidence without calling Gemma. The evaluator accepts
-any CSV with `id` and `question` columns and preserves optional labels such as
-`type`, `difficulty`, `source_docs`, `paper_scope`, and `expected_behavior`.
-It never sends a reference answer or expected source title to the agent. It records source coverage, abstention
-behavior, errors and latency. A person must review correctness and claim support
-before the report can state accuracy or hallucination rates.
-
-Review CSV exports require a new filename so an existing human review is never
-overwritten. Fill `correctness_review` with `correct`, `partial`, or
-`incorrect`; fill `citation_support_review` with `supported`, `partial`, or
-`unsupported`. Enter both supported and total claim counts together. Blank
-fields preserve saved review values. Import rejects duplicate IDs and invalid
-counts before writing the report.
 
 Users ask questions in the chat UI. Its `/api/chat` route accepts the message
 and conversation ID. The workflow chooses retrieval internally; users do not
 construct filter objects. Comparison retrieval can scope itself to discovered
-paper titles. Offline evaluation calls the same Python answer function directly.
+paper titles. The evaluation gateway calls the same Python answer function directly.
 
+## Try the agent through the evaluation gateway
 
-### Inspect PDF sections and chunks
-
-Use `tests/inspect_chunks.py` to inspect how research PDFs are processed before embedding and indexing.
-
-The script uses the existing `extract_sections()` and `chunk_sections()` functions from `app/document_processing.py`.
-
-It helps evaluate:
-- Section detection and heading accuracy.
-- Section boundaries and page locations.
-- Chunk size distribution.
-- Chunk content and readability.
-- Section and child chunk metadata.
-
-#### Usage
-
-Run the commands from the project root with the Python environment activated.
-
-**macOS / Linux**
-
-```bash
-# Inspect the default paper: Attention Is All You Need
-PYTHONPATH=. python tests/inspect_chunks.py
-
-# Inspect another paper by partial filename
-PYTHONPATH=. python tests/inspect_chunks.py "Chinchilla"
-
-# Inspect BERT
-PYTHONPATH=. python tests/inspect_chunks.py "BERT"
-
-# Display the first 10 chunks
-PYTHONPATH=. python tests/inspect_chunks.py --samples 10
-
-# Inspect a specific PDF using its path
-PYTHONPATH=. python tests/inspect_chunks.py "/path/to/paper.pdf"
-```
-
-**Windows PowerShell**
-
-```powershell
-# Inspect the default paper
-.\.venv-research\Scripts\python.exe -m tests.inspect_chunks
-
-# Or run the script directly from the project root
-$env:PYTHONPATH = "."
-.\.venv-research\Scripts\python.exe tests\inspect_chunks.py
-
-# Inspect another paper
-.\.venv-research\Scripts\python.exe tests\inspect_chunks.py "Chinchilla"
-
-# Display 10 chunks
-.\.venv-research\Scripts\python.exe tests\inspect_chunks.py --samples 10
-```
-
-#### Arguments
-
-| Argument | Description | Default |
-|----------|-------------|---------|
-| `paper` | PDF filename, partial filename, or file path | `Attention` |
-| `--samples` | Number of sample chunks to display | `5` |
-
-When no paper is specified, the script searches for **Attention Is All You Need**.
-
-For partial filenames, the script searches recursively under `synced_sources/drive/`. If multiple PDFs match, provide a more specific name or an explicit path.
-
-### Inspection output
-
-The script displays three sections:
-
-1. **Paper summary and extracted sections**
-   - Document classification.
-   - Total number of sections and chunks.
-   - Detected section headings.
-   - Page locations and section lengths.
-
-2. **Chunk statistics**
-   - Minimum, maximum, average, and median chunk lengths.
-   - Number of chunks shorter than 200 characters.
-   - Number of chunks exceeding `MAX_CHUNK_CHARACTERS`.
-
-3. **Sample chunks**
-   - Actual chunk text.
-   - Section heading and page location.
-   - `section_index` and `child_index`.
-   - Extraction strategy and character length.
-
-#### What to check
-
-Review the extracted sections before evaluating chunk quality.
-
-- Are major paper headings detected correctly?
-- Does each section contain the appropriate content?
-- Are chunk sizes within the configured limit?
-- Are chunks readable and meaningful independently?
-- Do chunk metadata and locations match the source PDF?
-
-The script is read-only. It does not generate embeddings, update ChromaDB, or modify source PDFs.
-
-**Note:** This is a manual inspection tool, not an automated quality evaluation. Chunk size compliance does not guarantee good semantic boundaries or retrieval performance.
-
-### Chunk Inspection Scoring
-
-The `tests/inspect_chunks.py` script evaluates PDF section extraction and chunking quality using a **rule-based score out of 100**, without requiring an LLM.
-
-The goal is to identify structural issues before embedding chunks into ChromaDB.
-
-#### Scoring Methodology
-
-| Metric | Weight | Description |
-|---|---:|---|
-| Size compliance | 30 | Percentage of chunks within the 1,200-character limit |
-| Metadata completeness | 25 | Presence of `location`, `strategy`, `section_index`, and `child_index` |
-| Content substance | 25 | Chunk length relative to a 200-character threshold; shorter chunks receive partial credit |
-| Content cleanliness | 20 | Percentage of chunks without predefined PDF-noise patterns |
-| **Total** | **100** | **Sum of all four metrics** |
-
-**Calculation:**
-
-- **Size:** `30 × (valid chunks / total chunks)`
-- **Metadata:** `25 × (present fields / expected fields)`
-- **Substance:** `25 × average(min(chunk length / 200, 1))`
-- **Cleanliness:** `20 × (1 - noisy chunks / total chunks)`
-
-The script also flags short sections (under 100 characters), undersized or oversized chunks, missing metadata, and possible PDF artifacts.
-
-#### Usage
-
-Run from the project root:
-
-```bash
-# Default: Attention Is All You Need
-PYTHONPATH=. python tests/inspect_chunks.py
-
-# Inspect another paper
-PYTHONPATH=. python tests/inspect_chunks.py "BERT"
-
-# Display 10 sample chunks
-PYTHONPATH=. python tests/inspect_chunks.py --samples 10
-```
-
-The default filename pattern is `Attention_Is_All_You_Need`, avoiding conflicts with `FlashAttention`.
-
-#### Interpretation
-
-A higher score indicates better compliance with the configured structural checks. However, **the score does not measure semantic coherence, retrieval accuracy, or answer correctness**.
-
-For example, a chunk containing unrelated paragraphs could still receive full points if it meets all four checks.
-
-Use the score alongside manual section/chunk inspection and separate retrieval evaluation. The weights and thresholds are initial heuristics and may be refined after testing multiple research papers.
-
-## Measure accuracy and latency
-
-`scripts/benchmark.py` runs questions through the same call as `api_view.team1_agent`
-and records answers, per-stage timings, LLM calls and tokens, and memory.
-`scripts/judge.py` grades the run with the official grader's `judge()`
-(gpt-4o-mini, +1 correct, +0.5 partial, 0 idk, -0.5 hallucinated; unanswerable
-questions score +1 only for an explicit abstention). It needs `OPENAI_API_KEY`
-in the environment or this folder's `.env`. Results go to `data/evaluations/`,
-which is not committed.
-
-Pick the level that matches what changed:
-
-| Level | Questions | Time | Use for |
-|---|---|---|---|
-| Unit tests | `tests/test_agent.py`, `test_grounding.py`, `test_question_planning.py`, `test_hybrid.py` | < 1 min | Verifier, formatting and planner logic |
-| Smoke | `smoke_set.csv` (D01, D04, D05, D09, D13: numbers, multipart, two papers, unanswerable, five papers) | ~10 min | Planning, retrieval or prompt changes |
-| Full | `../../dev_set.csv` (15) and `unseen_set.csv` (10, papers outside the dev set) | ~50 min | Before accepting changes or a test-set run |
-
-```powershell
-.\.venv-research\Scripts\python.exe -m pytest -q tests/test_agent.py tests/test_grounding.py tests/test_question_planning.py tests/test_hybrid.py
-.\.venv-research\Scripts\python.exe scripts\benchmark.py smoke_set.csv --output data\evaluations\smoke.json
-.\.venv-research\Scripts\python.exe scripts\judge.py data\evaluations\smoke.json --dataset smoke_set.csv
-# Full check
-.\.venv-research\Scripts\python.exe scripts\benchmark.py ..\..\dev_set.csv --output data\evaluations\dev.json
-.\.venv-research\Scripts\python.exe scripts\judge.py data\evaluations\dev.json
-.\.venv-research\Scripts\python.exe scripts\benchmark.py unseen_set.csv --output data\evaluations\unseen.json
-.\.venv-research\Scripts\python.exe scripts\judge.py data\evaluations\unseen.json --dataset unseen_set.csv
-```
-
-On macOS use `.venv-research/bin/python` and forward slashes. Run one benchmark
-at a time: Ollama serves one request at a time (`OLLAMA_NUM_PARALLEL` defaults
-to 1), so parallel runs slow each other and push answers past the grader's 120 s
-timeout. `benchmark.py` has no HTTP timeout; check `seconds` against 120 yourself.
-Never run these scripts on the hidden test set or read its per-question results;
-use only the score the dashboard reports.
-
-### Try the agent through the evaluation gateway
-
-1. Make sure Ollama is running (`curl localhost:11434/api/version`) and no other benchmark is.
+1. Make sure Ollama is running (`curl localhost:11434/api/version`) and no other evaluation run is.
 2. From the repo root, start the gateway and leave the terminal open:
    `members/team_hieu_trang/.venv-research/bin/python -m uvicorn api_view:app --port 8000`
 3. Open http://127.0.0.1:8000/docs.
@@ -382,6 +223,10 @@ use only the score the dashboard reports.
 7. Do not ask questions elsewhere (chat UI, another tab) while a run is going; Ollama serves one
    request at a time. Stop the gateway with Ctrl+C.
 
+On a long run, start Ollama with `LLAMA_ARG_CACHE_RAM=0` (PowerShell:
+`$env:LLAMA_ARG_CACHE_RAM = 0; ollama serve`). Its default 8 GiB prompt cache in host RAM
+otherwise grows with every distinct question.
+
 ## Limits
 
 PDF extraction is text-based. Scans need OCR; figures, equations, tables and
@@ -392,7 +237,40 @@ resolve conflicting passages. The context is bounded by parent sections and
 shortened conversation history; character limits approximate model token usage.
 Complexity detection is heuristic. Model-based paper resolution and subquestion
 completeness need reviewed evaluation. Task coverage checks do not prove semantic
-entailment. Image understanding is deferred.
+entailment. The premise search matches wording: it misses a false premise the paper
+rules out only in other words (a critic model excluded just by "no reinforcement
+learning") and a paper that both uses and avoids similar things can mislead it.
+On 16 held-out false-premise questions written after the build it quoted a sentence
+for 7 and the right one for 6; it has no cue for "remove", "rather than" or "frozen",
+and one quote was unrelated because it matched "attention", a word of the paper's
+own name. A quoted correction is graded correct when the question counts as
+answerable, but a grader that files the question as unanswerable (no source
+documents) scores a plain "I don't know" +1 and a correction -0.5.
+The stage check compares wording only. It cannot bind a number in a flattened table
+row that names every stage ("Pre-Training Context Extension Post-Training Total
+2664K 119K 5K 2788K"), it ignores a stage named in a neighbouring sentence (often
+only an adjective such as "the pre-trained weights"), and it reads a scientific
+value such as 1e-4 only in that spelling. It rejects a wrong-stage number only
+when the cited text itself shows the other stage; when retrieval never finds the
+right stage's passage the answer becomes "I don't know" at best, not the right
+value. The repair after a rejection is narrower still: it replaces only a
+whole-run total, never another stage's figure; it needs the question to name the
+unit ("GPU hours", not "compute") and stage figures in the retrieved text that add
+up to the total within 1%; and it never reads table cells, so per-stage dollar
+costs stay unanswered. Of the 39 indexed papers only DeepSeek-V3 reports such a
+breakdown, so it is the only paper where the repair can fire. Answers without a number (a name, a sentence) are not checked against the
+question at all: an off-topic sentence, or a name Gemma knows but the cited text does
+not state, is accepted. Three lexical gates were measured on saved drafts and
+rejected because each also rejected correct answers or caught nothing: a rare
+question word absent from the cited text (about 6 of 20 correct dev questions lost),
+a capitalised name in the answer absent from the cited text (caught none of six
+new off-topic answers), and the reranker score of the best cited passage or
+sentence (correct and wrong answers overlap). Multi-paper questions lose points to
+three causes that need different fixes: a paper named informally ("the Scaling
+Laws paper") is not resolved, a clause with a pronoun ("... as its tool") keeps the
+two-paper question as one task, and table-style or attribute-word facts (layer
+counts, GPUs, a normalization name) are not retrieved.
+Image understanding is deferred.
 
 The app is a single workspace without sign-in. Run it on localhost or a trusted
 network. Drive permissions are not reproduced per user.

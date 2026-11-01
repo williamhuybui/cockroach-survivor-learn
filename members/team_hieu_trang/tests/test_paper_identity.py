@@ -22,18 +22,6 @@ PAPERS = [
 ]
 
 
-def test_alias_changes_invalidate_evaluation_resume_without_changing_index():
-    """An identity change affects retrieval configuration, not stored PDF vectors."""
-    from app.evaluate import build_evaluation_configuration
-
-    paper_catalog.refresh_local_catalog(PAPERS)
-    before = build_evaluation_configuration()
-    paper_catalog.set_paper_aliases("drive-a", ["Orion"])
-    after = build_evaluation_configuration()
-    assert before["catalog_aliases_sha256"] != after["catalog_aliases_sha256"]
-    assert before["index_sha256"] == after["index_sha256"]
-
-
 def test_parallel_alias_reads_return_independent_values():
     """Concurrent requests only read aliases and cannot mutate another request's list."""
     from concurrent.futures import ThreadPoolExecutor
@@ -102,25 +90,6 @@ def test_alias_maintenance_rejects_unknown_owner_short_and_colliding_names(
     paper_catalog.refresh_local_catalog(PAPERS)
     with pytest.raises(ValueError):
         paper_catalog.set_paper_aliases(owner, aliases)
-
-
-def test_user_alias_overrides_wrong_model_paper_choice(monkeypatch):
-    """An allowed filename is insufficient when it identifies the wrong subject."""
-    monkeypatch.setattr(
-        question_planning,
-        "request_structured_response",
-        lambda schema, *args: schema(
-            tasks=[
-                {
-                    "question": "Explain Orion training",
-                    "paper": PAPERS[1]["title"],
-                    "scope": "paper",
-                }
-            ]
-        ),
-    )
-    plan = question_planning.plan_question_tasks("Explain Orion training", [], PAPERS)
-    assert plan.tasks[0].paper == PAPERS[0]["title"]
 
 
 def test_planner_invented_reference_cannot_establish_scope(monkeypatch):

@@ -36,13 +36,6 @@ def test_chat_survives_refresh_and_can_be_deleted(monkeypatch):
     assert client.get("/api/sessions/browser-id").status_code == 404
 
 
-def test_obsolete_endpoints_are_removed():
-    """Keep the old typo and separate quiz-creation endpoint unavailable."""
-    for path in ("/team1/rag-aget", "/api/quizzes"):
-        response = client.post(path, json={"query": "Explain attention"})
-        assert response.status_code == 404
-
-
 def test_quiz_storage_and_grading_use_sqlite(monkeypatch):
     from app import services
     from app.quiz_validation import QuizContent

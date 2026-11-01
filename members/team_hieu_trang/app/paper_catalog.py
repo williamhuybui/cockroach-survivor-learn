@@ -50,6 +50,15 @@ def catalog_identity_names(row: dict) -> list[str]:
     return names
 
 
+def name_pattern(name: str) -> str:
+    """Match a whole catalog name, allowing spaces, underscores or hyphens between its words."""
+    return (
+        r"(?<!\w)"
+        + re.escape(name.replace("_", " ")).replace(r"\ ", r"[\s_-]+")
+        + r"(?!\w)"
+    )
+
+
 def refresh_local_catalog(papers: list[dict]) -> None:
     """Copy current index/CSV identity fields while preserving verified aliases.
 
@@ -156,6 +165,41 @@ def find_first_author_papers(query: str, papers: list[dict]) -> set[str]:
     return found
 
 
+# Title words that identify nothing even at the start of a title ("Language Models ...").
+GENERIC_TITLE_WORDS = {
+    "a", "an", "the", "of", "in", "on", "for", "and", "to", "with", "from", "by", "is", "are",
+    "do", "does", "how", "why", "what", "which", "language", "languages", "model", "models",
+    "large", "llm", "llms", "neural", "learning", "training", "paper",
+}
+
+
+def find_title_phrase_papers(query: str, papers: list[dict]) -> set[str]:
+    """Match 'the Scaling Laws paper' to the one paper whose title begins with 'Scaling Laws'.
+
+    `query` is a normalized question padded with spaces. The words before 'paper' must be at
+    least the first two words of a title, one of them not generic, and no other paper's title
+    may begin with the same words. A bare 'scaling laws' elsewhere names no paper.
+    """
+    starts: dict[str, set[str]] = {}
+    for row in papers:
+        stem = re.sub(r"^\d+[ _-]*", "", Path(row["title"]).stem)
+        for text in {stem, row.get("catalog_title", "")}:
+            words = normalize_paper_reference(text).split()
+            # 'The Orion 3 Herd' must not turn the article of "the Orion paper" into its name.
+            while words and words[0] in ("the", "a", "an"):
+                words = words[1:]
+            for length in range(2, len(words) + 1):
+                starts.setdefault(" ".join(words[:length]), set()).add(row["title"])
+    return {
+        title
+        for fragment, owners in starts.items()
+        if len(owners) == 1
+        and set(fragment.split()) - GENERIC_TITLE_WORDS
+        and f" {fragment} paper " in query
+        for title in owners
+    }
+
+
 def find_paper_references(question: str, papers: list[dict]) -> dict:
     """Find clear catalog identities and weaker candidates worth retrieving.
 
@@ -185,6 +229,8 @@ def find_paper_references(question: str, papers: list[dict]) -> dict:
             else:
                 ambiguous = True
                 candidates.update(owners[name])
+    # A paper without a short name can be named by the start of its title plus 'paper'.
+    titles.update(find_title_phrase_papers(query, papers))
     # Bare numbers may be years or model sizes; only a labeled paper number counts.
     for number in re.findall(r"\bpaper\s*#?\s*(\d+)\b", question, re.IGNORECASE):
         matches = {
@@ -284,14 +330,15 @@ def find_paper_references(question: str, papers: list[dict]) -> dict:
 
 
 def find_named_source_papers(question: str, papers: list[dict]) -> list[str]:
-    """Return papers the question names as its source, as in 'according to the LoRA paper'.
+    """Return papers the question names as its source, as in 'according to the Orion paper'.
 
-    Only an explicit 'the <name> paper' phrase counts; a model name such as Mixtral
+    Only an explicit 'the <name> paper' phrase counts; a model name such as Sirius
     elsewhere in the question does not make its paper an allowed source.
     """
     titles = set()
     for phrase in re.findall(r"\bthe ([^,;?]{2,80}?) paper\b", question, re.IGNORECASE):
-        titles.update(find_paper_references(phrase, papers)["titles"])
+        # Keep 'paper' so that a title start such as 'Scaling Laws' can name it too.
+        titles.update(find_paper_references(f"the {phrase} paper", papers)["titles"])
     return sorted(titles)
 
 

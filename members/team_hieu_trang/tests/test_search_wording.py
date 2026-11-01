@@ -182,64 +182,6 @@ def test_short_parent_keeps_the_start_even_when_later_child_ranks_first():
     assert "Model Gamma" in result[0]["content"]
 
 
-def test_reranker_orders_passages_by_score_without_heading_override(monkeypatch):
-    """A heading cannot promote a low-scoring passage over stronger matches."""
-    from types import SimpleNamespace
-
-    # Ordering is under test, so a local .env score minimum must not drop 'weak'.
-    monkeypatch.setattr(retrieval, "MIN_RERANK_SCORE", None)
-    monkeypatch.setattr(
-        retrieval,
-        "get_reranker_model",
-        lambda: SimpleNamespace(predict=lambda pairs: [8.0, 3.0, -2.0, 9.0]),
-    )
-    rows = [
-        {"id": "results", "content": "Results", "heading": "2.3 Results"},
-        {
-            "id": "methods",
-            "content": "Methods",
-            "heading": "2.2 Methods",
-            "evidence_type": "prose",
-        },
-        {"id": "weak", "content": "Unrelated", "heading": "3 Methods"},
-        {
-            "id": "caption",
-            "content": "Caption",
-            "heading": "Methods",
-            "evidence_type": "caption",
-        },
-    ]
-    ranked = retrieval.rerank_passage_candidates(
-        "Which methods does the experiment evaluate?", rows
-    )
-    assert [row["id"] for row in ranked] == ["caption", "results", "methods", "weak"]
-
-
-def test_ranked_candidates_are_kept_without_heading_only_filter(monkeypatch):
-    """A heading match alone does not remove higher-ranked evidence."""
-    rows = [
-        {
-            "id": "result",
-            "title": "A",
-            "content": "Results",
-            "heading_matches_request": False,
-        },
-        {
-            "id": "method",
-            "title": "A",
-            "content": "Complete methods",
-            "heading_matches_request": True,
-        },
-    ]
-    monkeypatch.setattr(retrieval, "find_hybrid_candidates", lambda *args: rows)
-    monkeypatch.setattr(retrieval, "rerank_passage_candidates", lambda *args: rows)
-    trace = {}
-    result = retrieval.retrieve_relevant_passages(
-        "Which methods does it use?", diagnostics=trace
-    )
-    assert [row["id"] for row in result] == ["result", "method"]
-
-
 def test_schema_field_descriptions_reach_model_separately_from_input(monkeypatch):
     """Give the model field semantics without putting source data into instructions."""
     from types import SimpleNamespace

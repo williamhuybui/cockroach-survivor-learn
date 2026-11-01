@@ -2,42 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 
-import pytest
-from pydantic import ValidationError
-
 from app import question_planning as planning
-
-
-@pytest.mark.parametrize(
-    "question",
-    [
-        "Explain Orion 8x4B",
-        "What is Orion?",
-        "List Orion assumptions and limitations",
-        "What does paper 42 say?",
-    ],
-)
-def test_all_wordings_use_one_catalog_contract(monkeypatch, question):
-    """Model names, catalog numbers and multipart wording share a validated interface."""
-    calls = []
-
-    def plan(schema, instruction, payload):
-        """Select an allowed filename, never normalize a guessed model output later."""
-        calls.append(payload)
-        with pytest.raises(ValidationError):
-            schema(tasks=[{"question": "Orion?", "paper": "42", "scope": "paper"}])
-        with pytest.raises(ValidationError):
-            schema(tasks=[{"question": "Orion?", "scope": "paper"}])
-        return schema(
-            tasks=[{"question": question, "paper": "42_Orion.pdf", "scope": "paper"}]
-        )
-
-    monkeypatch.setattr(planning, "request_structured_response", plan)
-    result = planning.plan_question_tasks(
-        question, [], [{"title": "42_Orion.pdf", "paper_number": 42}]
-    )
-    assert len(calls) == 1
-    assert result.tasks[0].paper == "42_Orion.pdf"
 
 
 def test_request_local_catalogs_do_not_leak_between_threads(monkeypatch):

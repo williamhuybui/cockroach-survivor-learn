@@ -273,6 +273,36 @@ def test_currency_is_not_supported_by_a_source_without_that_currency():
     assert result["status"] == "abstained"
 
 
+def test_gpu_hours_question_cannot_be_answered_with_another_compute_unit():
+    """Petaflop/s-days are not GPU hours, although both describe training compute."""
+    result, checked = evaluate(
+        "How many GPU hours did training take?",
+        "Training took 3,640 petaflop/s-days of compute.",
+        "Training took 3,640 petaflop/s-days.",
+    )
+    assert result["status"] == "abstained"
+    assert "GPU hours" in checked["rejections"][0]["reason"]
+
+
+@pytest.mark.parametrize(
+    "question,source,answer",
+    [
+        ("How many GPU hours did pre-training take?", "Pre-training took 2664K H800 GPU hours.", "2664K H800 GPU hours"),
+        ("How many GPU-hours did training take?", "Training used 1,022,362 GPU hours.", "1,022,362 GPU-hours"),
+        ("How many TPU days did it take?", "It took 14 TPU days.", "14 TPU days"),
+    ],
+)
+def test_requested_compute_unit_remains_valid_when_answer_and_source_match(question, source, answer):
+    """Plural forms, hyphens and a hardware prefix such as H800 do not change the unit."""
+    result, _ = evaluate(question, source, answer)
+    assert result["status"] == "answered"
+
+
+def test_question_without_a_compute_unit_is_not_unit_checked():
+    result, _ = evaluate("How many tokens did training use?", "Training used 1.4 trillion tokens.", "1.4 trillion tokens")
+    assert result["status"] == "answered"
+
+
 def test_explaining_a_currency_symbol_does_not_require_a_monetary_amount():
     """A question about a symbol itself should not trigger an amount check."""
     result, _ = evaluate(
@@ -364,7 +394,7 @@ def test_supported_contextual_part_survives_an_invalid_citation_on_another_part(
 
 @pytest.mark.parametrize("extra_source", [False, True])
 def test_joint_detail_can_cite_both_verified_papers_but_not_a_third(extra_source):
-    """A comparison can join its verified sources while retaining the paper allow-list."""
+    """A comparison can join its verified sources; a third paper never counts as support."""
     tasks = [{"question": "Compare the two models", "paper": ["A.pdf", "B.pdf"]}]
     evidence = [
         {
@@ -398,4 +428,6 @@ def test_joint_detail_can_cite_both_verified_papers_but_not_a_third(extra_source
     )
     checked = grounding.verify_answer_citations(draft, evidence, tasks)
     result = grounding.format_cited_answer(checked, evidence, tasks)
-    assert result["status"] == ("abstained" if extra_source else "answered")
+    # Both values are in the allowed papers, so the extra C.pdf label is dropped.
+    assert result["status"] == "answered"
+    assert [row["title"] for row in result["sources"]] == ["A.pdf", "B.pdf"]

@@ -61,6 +61,52 @@ def test_distinctive_title_fragment_produces_candidates_without_stopping():
     assert not refs["titles"]
 
 
+TITLE_START_PAPERS = [
+    {"title": "06_Stellar_Laws_for_Neural_Routers.pdf", "aliases": []},
+    {"title": "07_ZETA_Compute_Optimal.pdf", "aliases": []},
+    {"title": "08_Stellar_LLM_Inference.pdf", "aliases": []},
+    {"title": "10_Deep_Routers_for_Vision.pdf", "aliases": []},
+    {"title": "11_Deep_Routers_at_Scale.pdf", "aliases": []},
+    {"title": "12_Language_Models_are_Routers.pdf", "aliases": []},
+]
+
+
+def test_title_start_before_paper_names_it_beside_another_named_paper():
+    """'the Stellar Laws paper' is the paper whose title starts with those words, even next to ZETA."""
+    refs = paper_catalog.find_paper_references(
+        "What do the Stellar Laws paper and ZETA conclude about compute?", TITLE_START_PAPERS
+    )
+    assert refs["titles"] == ["06_Stellar_Laws_for_Neural_Routers.pdf", "07_ZETA_Compute_Optimal.pdf"]
+    assert paper_catalog.find_named_source_papers(
+        "What does the Stellar Laws paper conclude?", TITLE_START_PAPERS
+    ) == ["06_Stellar_Laws_for_Neural_Routers.pdf"]
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Which stellar laws does ZETA follow?",  # ordinary wording without 'paper'
+        "What does the Deep Routers paper report about ZETA?",  # two titles start this way
+        "What does the Language Models paper report about ZETA?",  # generic words only
+        "What does the Stellar paper report about ZETA?",  # one word is not a title start
+    ],
+)
+def test_title_start_names_nothing_unless_it_is_distinct_and_followed_by_paper(question):
+    assert paper_catalog.find_paper_references(question, TITLE_START_PAPERS)["titles"] == [
+        "07_ZETA_Compute_Optimal.pdf"
+    ]
+
+
+def test_leading_article_of_a_title_is_not_its_name():
+    """'The Orion 3 Herd' must not claim the article of 'the Orion paper'."""
+    papers = [
+        {"title": "15_Orion.pdf", "aliases": ["Orion"]},
+        {"title": "21_The_Orion_3_Herd_of_Models.pdf", "aliases": ["Orion 3"]},
+    ]
+    refs = paper_catalog.find_paper_references("How does the Orion paper position it?", papers)
+    assert refs["titles"] == ["15_Orion.pdf"]
+
+
 def test_author_finds_paper_without_matching_its_title():
     """An author reference suggests a paper without pretending the name is unique."""
     papers = [
@@ -377,7 +423,7 @@ def test_verified_multi_paper_scope_does_not_trigger_ambiguity(monkeypatch):
         lambda query, paper: [row for row in rows if row["title"] == paper],
     )
     monkeypatch.setattr(
-        retrieval, "rerank_passage_candidates", lambda query, candidates: candidates
+        retrieval, "rerank_passage_candidates", lambda query, candidates, **options: candidates
     )
     monkeypatch.setattr(
         retrieval, "expand_parent_section_windows", lambda rows, limit: rows
@@ -408,7 +454,7 @@ def test_joint_search_interleaves_each_paper_and_retains_audit(monkeypatch):
     )
     monkeypatch.setattr(retrieval, "find_hybrid_candidates", find)
     monkeypatch.setattr(
-        retrieval, "rerank_passage_candidates", lambda query, candidates: candidates
+        retrieval, "rerank_passage_candidates", lambda query, candidates, **options: candidates
     )
     monkeypatch.setattr(
         retrieval, "expand_parent_section_windows", lambda rows, limit: rows[:limit]
