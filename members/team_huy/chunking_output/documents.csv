@@ -1,0 +1,40 @@
+doc_id,title,document_summary,pages,section_ids,file,year
+doc01,Word2Vec,,12,"[""doc01-s01"", ""doc01-s02"", ""doc01-s03"", ""doc01-s04"", ""doc01-s05"", ""doc01-s06"", ""doc01-s07"", ""doc01-s08""]",01_Word2Vec.pdf,2013
+doc02,Neural Machine Translation by Jointly Learning to Align and Translate,,15,"[""doc02-s01"", ""doc02-s02"", ""doc02-s03"", ""doc02-s04"", ""doc02-s05"", ""doc02-s06"", ""doc02-s07"", ""doc02-s08""]",02_Neural_Machine_Translation_by_Jointly_Learning_to_Align_and_Translate.pdf,2014
+doc03,Attention Is All You Need,,15,"[""doc03-s01"", ""doc03-s02"", ""doc03-s03"", ""doc03-s04"", ""doc03-s05"", ""doc03-s06"", ""doc03-s07"", ""doc03-s08""]",03_Attention_Is_All_You_Need.pdf,2017
+doc04,BERT,,16,"[""doc04-s01"", ""doc04-s02"", ""doc04-s03"", ""doc04-s04"", ""doc04-s05"", ""doc04-s06"", ""doc04-s07""]",04_BERT.pdf,2018
+doc05,GPT-3 Language Models are Few-Shot Learners,,75,"[""doc05-s01"", ""doc05-s02"", ""doc05-s03"", ""doc05-s04"", ""doc05-s05"", ""doc05-s06"", ""doc05-s07"", ""doc05-s08""]",05_GPT-3_Language_Models_are_Few-Shot_Learners.pdf,2020
+doc06,Scaling Laws for Neural Language Models,,30,"[""doc06-s01"", ""doc06-s02"", ""doc06-s03"", ""doc06-s04"", ""doc06-s05"", ""doc06-s06"", ""doc06-s07"", ""doc06-s08"", ""doc06-s09""]",06_Scaling_Laws_for_Neural_Language_Models.pdf,2020
+doc07,Chinchilla Training Compute-Optimal LLMs,,36,"[""doc07-s01"", ""doc07-s02"", ""doc07-s03"", ""doc07-s04"", ""doc07-s05"", ""doc07-s06"", ""doc07-s07""]",07_Chinchilla_Training_Compute-Optimal_LLMs.pdf,2022
+doc08,InstructGPT,,68,"[""doc08-s01"", ""doc08-s02"", ""doc08-s03"", ""doc08-s04"", ""doc08-s05"", ""doc08-s06"", ""doc08-s07"", ""doc08-s08""]",08_InstructGPT.pdf,2022
+doc09,Constitutional AI,,34,"[""doc09-s01"", ""doc09-s02"", ""doc09-s03"", ""doc09-s04"", ""doc09-s05"", ""doc09-s06"", ""doc09-s07"", ""doc09-s08""]",09_Constitutional_AI.pdf,2022
+doc10,DPO Direct Preference Optimization,,27,"[""doc10-s01"", ""doc10-s02"", ""doc10-s03"", ""doc10-s04"", ""doc10-s05"", ""doc10-s06"", ""doc10-s07"", ""doc10-s08""]",10_DPO_Direct_Preference_Optimization.pdf,2023
+doc11,Chain-of-Thought Prompting,,43,"[""doc11-s01"", ""doc11-s02"", ""doc11-s03"", ""doc11-s04"", ""doc11-s05"", ""doc11-s06"", ""doc11-s07""]",11_Chain-of-Thought_Prompting.pdf,2022
+doc12,ReAct,,33,"[""doc12-s01"", ""doc12-s02"", ""doc12-s03"", ""doc12-s04"", ""doc12-s05"", ""doc12-s06"", ""doc12-s07""]",12_ReAct.pdf,2022
+doc13,Toolformer,,17,"[""doc13-s01"", ""doc13-s02"", ""doc13-s03"", ""doc13-s04"", ""doc13-s05"", ""doc13-s06"", ""doc13-s07"", ""doc13-s08""]",13_Toolformer.pdf,2023
+doc14,DeepSeek-R1,,86,"[""doc14-s01"", ""doc14-s02"", ""doc14-s03"", ""doc14-s04"", ""doc14-s05"", ""doc14-s06"", ""doc14-s07"", ""doc14-s08"", ""doc14-s09"", ""doc14-s10"", ""doc14-s11"", ""doc14-s12"", ""doc14-s13"", ""doc14-s14"", ""doc14-s15"", ""doc14-s16"", ""doc14-s17""]",14_DeepSeek-R1.pdf,2025
+doc15,LLaMA,,27,"[""doc15-s01"", ""doc15-s02"", ""doc15-s03"", ""doc15-s04"", ""doc15-s05"", ""doc15-s06"", ""doc15-s07"", ""doc15-s08"", ""doc15-s09""]",15_LLaMA.pdf,2023
+doc16,LoRA,,26,"[""doc16-s01"", ""doc16-s02"", ""doc16-s03"", ""doc16-s04"", ""doc16-s05"", ""doc16-s06"", ""doc16-s07"", ""doc16-s08""]",16_LoRA.pdf,2021
+doc17,FlashAttention,,34,"[""doc17-s01"", ""doc17-s02"", ""doc17-s03"", ""doc17-s04"", ""doc17-s05"", ""doc17-s06""]",17_FlashAttention.pdf,2022
+doc18,Mixtral of Experts,,13,"[""doc18-s01"", ""doc18-s02"", ""doc18-s03"", ""doc18-s04"", ""doc18-s05"", ""doc18-s06"", ""doc18-s07""]",18_Mixtral_of_Experts.pdf,2024
+doc19,Retrieval-Augmented Generation,,19,"[""doc19-s01"", ""doc19-s02"", ""doc19-s03"", ""doc19-s04"", ""doc19-s05"", ""doc19-s06"", ""doc19-s07""]",19_Retrieval-Augmented_Generation.pdf,2020
+doc20,Lost in the Middle,,18,"[""doc20-s01"", ""doc20-s02"", ""doc20-s03"", ""doc20-s04"", ""doc20-s05"", ""doc20-s06"", ""doc20-s07""]",20_Lost_in_the_Middle.pdf,2023
+doc21,The Llama 3 Herd of Models,,92,"[""doc21-s01"", ""doc21-s02"", ""doc21-s03"", ""doc21-s04"", ""doc21-s05"", ""doc21-s06"", ""doc21-s07"", ""doc21-s08"", ""doc21-s09"", ""doc21-s10"", ""doc21-s11"", ""doc21-s12""]",21_The_Llama_3_Herd_of_Models.pdf,2024
+doc22,DeepSeekMath (GRPO),,30,"[""doc22-s01"", ""doc22-s02"", ""doc22-s03"", ""doc22-s04"", ""doc22-s05"", ""doc22-s06""]",22_DeepSeekMath_GRPO.pdf,2024
+doc23,Scaling LLM Test-Time Compute Optimally,,37,"[""doc23-s01"", ""doc23-s02"", ""doc23-s03"", ""doc23-s04"", ""doc23-s05"", ""doc23-s06"", ""doc23-s07"", ""doc23-s08"", ""doc23-s09""]",23_Scaling_LLM_Test-Time_Compute_Optimally.pdf,2024
+doc24,DeepSeek-V3,,53,"[""doc24-s01"", ""doc24-s02"", ""doc24-s03"", ""doc24-s04"", ""doc24-s05"", ""doc24-s06"", ""doc24-s07""]",24_DeepSeek-V3.pdf,2024
+doc25,Alignment Faking in Large Language Models,,137,"[""doc25-s01"", ""doc25-s02"", ""doc25-s03"", ""doc25-s04"", ""doc25-s05"", ""doc25-s06"", ""doc25-s07"", ""doc25-s08"", ""doc25-s09"", ""doc25-s10"", ""doc25-s11""]",25_Alignment_Faking_in_Large_Language_Models.pdf,2024
+doc26,DAPO,,16,"[""doc26-s01"", ""doc26-s02"", ""doc26-s03"", ""doc26-s04"", ""doc26-s05"", ""doc26-s06""]",26_DAPO.pdf,2025
+doc27,Does RL Really Incentivize Reasoning Capacity Beyond the Base Model,,31,"[""doc27-s01"", ""doc27-s02"", ""doc27-s03"", ""doc27-s04"", ""doc27-s05"", ""doc27-s06"", ""doc27-s07"", ""doc27-s08""]",27_Does_RL_Really_Incentivize_Reasoning_Capacity_Beyond_the_Base_Model.pdf,2025
+doc28,Why Do Multi-Agent LLM Systems Fail,,47,"[""doc28-s01"", ""doc28-s02"", ""doc28-s03"", ""doc28-s04"", ""doc28-s05"", ""doc28-s06"", ""doc28-s07""]",28_Why_Do_Multi-Agent_LLM_Systems_Fail.pdf,2025
+doc29,Qwen3 Technical Report,,35,"[""doc29-s01"", ""doc29-s02"", ""doc29-s03"", ""doc29-s04"", ""doc29-s05"", ""doc29-s06"", ""doc29-s07"", ""doc29-s08""]",29_Qwen3_Technical_Report.pdf,2025
+doc30,Gemini 2.5,,73,"[""doc30-s01"", ""doc30-s02"", ""doc30-s03"", ""doc30-s04"", ""doc30-s05"", ""doc30-s06"", ""doc30-s07""]",30_Gemini_2.5.pdf,2025
+doc31,Try Check and Retry,,17,"[""doc31-s01"", ""doc31-s02"", ""doc31-s03"", ""doc31-s04"", ""doc31-s05"", ""doc31-s06"", ""doc31-s07""]",31_Try_Check_and_Retry.pdf,2026
+doc32,FinRetrieval,,26,"[""doc32-s01"", ""doc32-s02"", ""doc32-s03"", ""doc32-s04"", ""doc32-s05"", ""doc32-s06"", ""doc32-s07"", ""doc32-s08"", ""doc32-s09""]",32_FinRetrieval.pdf,2026
+doc33,MAS-FIRE,,16,"[""doc33-s01"", ""doc33-s02"", ""doc33-s03"", ""doc33-s04"", ""doc33-s05"", ""doc33-s06"", ""doc33-s07"", ""doc33-s08"", ""doc33-s09""]",33_MAS-FIRE.pdf,2026
+doc34,Reverse CAPTCHA,,5,"[""doc34-s01"", ""doc34-s02"", ""doc34-s03"", ""doc34-s04"", ""doc34-s05"", ""doc34-s06"", ""doc34-s07"", ""doc34-s08""]",34_Reverse_CAPTCHA.pdf,2026
+doc35,Evaluating Language Models for Harmful Manipulation,,66,"[""doc35-s01"", ""doc35-s02"", ""doc35-s03"", ""doc35-s04"", ""doc35-s05"", ""doc35-s06"", ""doc35-s07"", ""doc35-s08"", ""doc35-s09"", ""doc35-s10"", ""doc35-s11""]",35_Evaluating_Language_Models_for_Harmful_Manipulation.pdf,2026
+doc36,How Controllable Are Large Language Models (SteerEval),,31,"[""doc36-s01"", ""doc36-s02"", ""doc36-s03"", ""doc36-s04"", ""doc36-s05"", ""doc36-s06"", ""doc36-s07"", ""doc36-s08"", ""doc36-s09"", ""doc36-s10"", ""doc36-s11"", ""doc36-s12"", ""doc36-s13"", ""doc36-s14"", ""doc36-s15"", ""doc36-s16"", ""doc36-s17""]",36_How_Controllable_Are_Large_Language_Models_SteerEval.pdf,2026
+doc37,Cola DLM,,99,"[""doc37-s01"", ""doc37-s02"", ""doc37-s03"", ""doc37-s04"", ""doc37-s05"", ""doc37-s06"", ""doc37-s07"", ""doc37-s08""]",37_Cola_DLM.pdf,2026
+doc38,AI Co-Mathematician,,23,"[""doc38-s01"", ""doc38-s02"", ""doc38-s03"", ""doc38-s04"", ""doc38-s05"", ""doc38-s06"", ""doc38-s07"", ""doc38-s08"", ""doc38-s09""]",38_AI_Co-Mathematician.pdf,2026
+doc39,Harnessing the Universal Geometry of Embeddings,,18,"[""doc39-s01"", ""doc39-s02"", ""doc39-s03"", ""doc39-s04"", ""doc39-s05"", ""doc39-s06"", ""doc39-s07"", ""doc39-s08"", ""doc39-s09""]",39_Harnessing_the_Universal_Geometry_of_Embeddings.pdf,2025

@@ -1,0 +1,39 @@
+#,Phase,Title,Year,arXiv link,File
+1,Foundations,Word2Vec,2013,https://arxiv.org/abs/1301.3781,01_Word2Vec.pdf
+2,Foundations,Neural Machine Translation by Jointly Learning to Align and Translate,2014,https://arxiv.org/abs/1409.0473,02_Neural_Machine_Translation_by_Jointly_Learning_to_Align_and_Translate.pdf
+3,Foundations,Attention Is All You Need,2017,https://arxiv.org/abs/1706.03762,03_Attention_Is_All_You_Need.pdf
+4,Foundations,BERT,2018,https://arxiv.org/abs/1810.04805,04_BERT.pdf
+5,Scale,GPT-3 Language Models are Few-Shot Learners,2020,https://arxiv.org/abs/2005.14165,05_GPT-3_Language_Models_are_Few-Shot_Learners.pdf
+6,Scale,Scaling Laws for Neural Language Models,2020,https://arxiv.org/abs/2001.08361,06_Scaling_Laws_for_Neural_Language_Models.pdf
+7,Scale,Chinchilla Training Compute-Optimal LLMs,2022,https://arxiv.org/abs/2203.15556,07_Chinchilla_Training_Compute-Optimal_LLMs.pdf
+8,Alignment,InstructGPT,2022,https://arxiv.org/abs/2203.02155,08_InstructGPT.pdf
+9,Alignment,Constitutional AI,2022,https://arxiv.org/abs/2212.08073,09_Constitutional_AI.pdf
+10,Alignment,DPO Direct Preference Optimization,2023,https://arxiv.org/abs/2305.18290,10_DPO_Direct_Preference_Optimization.pdf
+11,Reasoning and Tools,Chain-of-Thought Prompting,2022,https://arxiv.org/abs/2201.11903,11_Chain-of-Thought_Prompting.pdf
+12,Reasoning and Tools,ReAct,2022,https://arxiv.org/abs/2210.03629,12_ReAct.pdf
+13,Reasoning and Tools,Toolformer,2023,https://arxiv.org/abs/2302.04761,13_Toolformer.pdf
+14,Reasoning and Tools,DeepSeek-R1,2025,https://arxiv.org/abs/2501.12948,14_DeepSeek-R1.pdf
+15,Open Models and Efficiency,LLaMA,2023,https://arxiv.org/abs/2302.13971,15_LLaMA.pdf
+16,Open Models and Efficiency,LoRA,2021,https://arxiv.org/abs/2106.09685,16_LoRA.pdf
+17,Open Models and Efficiency,FlashAttention,2022,https://arxiv.org/abs/2205.14135,17_FlashAttention.pdf
+18,Open Models and Efficiency,Mixtral of Experts,2024,https://arxiv.org/abs/2401.04088,18_Mixtral_of_Experts.pdf
+19,Knowledge and Limits,Retrieval-Augmented Generation,2020,https://arxiv.org/abs/2005.11401,19_Retrieval-Augmented_Generation.pdf
+20,Knowledge and Limits,Lost in the Middle,2023,https://arxiv.org/abs/2307.03172,20_Lost_in_the_Middle.pdf
+21,Recent 2024-2025,The Llama 3 Herd of Models,2024,https://arxiv.org/abs/2407.21783,21_The_Llama_3_Herd_of_Models.pdf
+22,Recent 2024-2025,DeepSeekMath (GRPO),2024,https://arxiv.org/abs/2402.03300,22_DeepSeekMath_GRPO.pdf
+23,Recent 2024-2025,Scaling LLM Test-Time Compute Optimally,2024,https://arxiv.org/abs/2408.03314,23_Scaling_LLM_Test-Time_Compute_Optimally.pdf
+24,Recent 2024-2025,DeepSeek-V3,2024,https://arxiv.org/abs/2412.19437,24_DeepSeek-V3.pdf
+25,Recent 2024-2025,Alignment Faking in Large Language Models,2024,https://arxiv.org/abs/2412.14093,25_Alignment_Faking_in_Large_Language_Models.pdf
+26,Recent 2024-2025,DAPO,2025,https://arxiv.org/abs/2503.14476,26_DAPO.pdf
+27,Recent 2024-2025,Does RL Really Incentivize Reasoning Capacity Beyond the Base Model,2025,https://arxiv.org/abs/2504.13837,27_Does_RL_Really_Incentivize_Reasoning_Capacity_Beyond_the_Base_Model.pdf
+28,Recent 2024-2025,Why Do Multi-Agent LLM Systems Fail,2025,https://arxiv.org/abs/2503.13657,28_Why_Do_Multi-Agent_LLM_Systems_Fail.pdf
+29,Recent 2024-2025,Qwen3 Technical Report,2025,https://arxiv.org/abs/2505.09388,29_Qwen3_Technical_Report.pdf
+30,Recent 2024-2025,Gemini 2.5,2025,https://arxiv.org/abs/2507.06261,30_Gemini_2.5.pdf
+31,2026,Try Check and Retry,2026,https://arxiv.org/abs/2603.11495,31_Try_Check_and_Retry.pdf
+32,2026,FinRetrieval,2026,https://arxiv.org/abs/2603.04403,32_FinRetrieval.pdf
+33,2026,MAS-FIRE,2026,https://arxiv.org/abs/2602.19843,33_MAS-FIRE.pdf
+34,2026,Reverse CAPTCHA,2026,https://arxiv.org/abs/2603.00164,34_Reverse_CAPTCHA.pdf
+35,2026,Evaluating Language Models for Harmful Manipulation,2026,https://arxiv.org/abs/2603.25326,35_Evaluating_Language_Models_for_Harmful_Manipulation.pdf
+36,2026,How Controllable Are Large Language Models (SteerEval),2026,https://arxiv.org/abs/2603.02578,36_How_Controllable_Are_Large_Language_Models_SteerEval.pdf
+37,2026,Cola DLM,2026,https://arxiv.org/abs/2605.06548,37_Cola_DLM.pdf
+38,2026,AI Co-Mathematician,2026,https://arxiv.org/abs/2605.06651,38_AI_Co-Mathematician.pdf
