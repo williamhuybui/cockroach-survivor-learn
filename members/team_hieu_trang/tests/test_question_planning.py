@@ -22,6 +22,37 @@ def test_empty_catalog_skips_planner_model(monkeypatch):
     assert len(result.tasks) == 1
 
 
+@pytest.mark.parametrize("question", [
+    "What is LoRA?",
+    "Which optimizer does LoRA use?",
+    "How many parameters does LoRA train?",
+])
+def test_simple_definition_searches_known_paper_without_model(monkeypatch, question):
+    monkeypatch.setattr(planning, "request_structured_response", lambda *args: pytest.fail("Unexpected model"))
+    papers = [{"title": "16_LoRA.pdf", "aliases": ["LoRA"]}]
+    plan = planning.plan_question_tasks(question, [], papers)
+    assert [(task.question, task.paper, task.scope) for task in plan.tasks] == [
+        (question, "16_LoRA.pdf", "paper")
+    ]
+
+
+@pytest.mark.parametrize("question,history", [
+    ("What is LoRA and its limitations?", []),
+    ("How does LoRA compare with BERT?", []),
+    ("What are LoRA's strengths, weaknesses?", []),
+    ("Which language models does LoRA evaluate?", []),
+    ("What is LoRA?", [{"role": "user", "content": "Explain the earlier paper."}]),
+])
+def test_complex_or_followup_questions_still_use_planner(monkeypatch, question, history):
+    calls = []
+    def plan_with_model(*args):
+        calls.append(True)
+        return QuestionPlan(tasks=[SearchTask(question=question, paper="16_LoRA.pdf", scope="paper")])
+    monkeypatch.setattr(planning, "request_structured_response", plan_with_model)
+    planning.plan_question_tasks(question, history, [{"title": "16_LoRA.pdf", "aliases": ["LoRA"]}])
+    assert calls
+
+
 def test_explicit_independent_parts_keep_the_original_requests(monkeypatch):
     """Separate original clauses about one paper without inventing new tasks."""
     monkeypatch.setattr(planning, "request_structured_response", lambda *args: pytest.fail("No model rewrite needed"))

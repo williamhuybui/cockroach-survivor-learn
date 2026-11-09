@@ -71,6 +71,23 @@ def depends_on_context(part: str) -> bool:
     return bool(REFERRING_PRONOUN.search(part) or POSSESSIVE_PRONOUN.search(part) or OMITTED_COUNT.search(part))
 
 
+def can_search_as_one_task(question: str, history: list[dict], references: dict) -> bool:
+    """Use the original question when one paper and one request are clearly stated."""
+    if history or len(references["titles"]) != 1 or references["ambiguous"] or references["candidates"]:
+        return False
+    text = question.strip().rstrip("?").strip()
+    if not re.match(QUESTION_WORD, text, re.IGNORECASE):
+        return False
+    # Conservative signals may send simple questions to Gemma; never split on these alone.
+    if re.search(r"[,;/?]|\b(?:and|or|each|respectively|both|list|identify|pros|cons)\b", text, re.IGNORECASE):
+        return False
+    if re.search(r"\bwhich\s+(?:[\w-]+\s+){0,3}(?:models|papers|datasets|methods|experiments)\b", text, re.IGNORECASE):
+        return False
+    if COMPARISON_WORDS.search(text) or depends_on_context(text) or re.search(r"\bet\s+al\b", text, re.IGNORECASE):
+        return False
+    return not re.search(r"\b(?:what|which|how|when|where|why|who)\b", text.split(maxsplit=1)[-1], re.IGNORECASE)
+
+
 def split_explicit_question_clauses(question: str, keep_dependent: bool = False) -> list[str]:
     """Keep independently worded question clauses as separate original requests.
 
@@ -290,6 +307,8 @@ def plan_question_tasks(
     if explicit_tasks:
         # The pieces are copied from the user, so no new questions are invented.
         return QuestionPlan(tasks=explicit_tasks, route="multipart")
+    if can_search_as_one_task(question, conversation, requested):
+        return QuestionPlan(tasks=[SearchTask(question=question, paper=requested["titles"][0], scope="paper")])
     words = set(tokenize_search_text(question))
     discovery = any(
         phrase in question.casefold()

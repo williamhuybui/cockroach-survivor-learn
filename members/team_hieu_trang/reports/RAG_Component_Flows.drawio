@@ -1,0 +1,662 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="component-flows" name="Component flows">
+    <mxGraphModel dx="1645" dy="866" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="3430" pageHeight="2506" background="#ffffff" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontSize=14;fontColor=#202124;" value="&lt;b style=&quot;font-size:32px&quot;&gt;Research RAG Agent: how each part works&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:15px&quot;&gt;Box 1 runs beforehand and builds the index that boxes 2 and 3 read. At question time the flow is 2 → 3 → 4. Drawn from the app code at commit a3c8e0a0.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="90" width="1600" x="40" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" parent="1" style="rounded=1;absoluteArcSize=1;arcSize=14;html=1;container=1;collapsible=0;pointerEvents=0;fillColor=#ffffff;strokeColor=#c4c4bf;strokeWidth=1;" value="" vertex="1">
+          <mxGeometry height="78" width="1600" x="1790" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_io" parent="legend" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#dce9fa;strokeColor=#6da5df;strokeWidth=1.5;spacing=2;fontSize=13;" value="&lt;b&gt;Input or output&lt;/b&gt;" vertex="1">
+          <mxGeometry height="42" width="176" x="16" y="18" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_py" parent="legend" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;spacing=2;fontSize=13;" value="&lt;b&gt;Python logic, no model&lt;/b&gt;" vertex="1">
+          <mxGeometry height="42" width="176" x="206" y="18" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_model" parent="legend" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#ffe2c0;strokeColor=#e59945;strokeWidth=1.5;spacing=2;fontSize=13;" value="&lt;b&gt;Model call&lt;/b&gt;" vertex="1">
+          <mxGeometry height="42" width="176" x="396" y="18" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_dec" parent="legend" style="rhombus;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=20;spacingRight=20;fontSize=13;fontColor=#202124;fillColor=#fff4ce;strokeColor=#e2b94b;strokeWidth=1.5;" value="&lt;b&gt;Decision&lt;/b&gt;" vertex="1">
+          <mxGeometry height="62" width="150" x="586" y="8" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_store" parent="legend" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=9;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=4;fontSize=14;fontColor=#202124;fillColor=#e3f1e1;strokeColor=#81b782;strokeWidth=1.5;" value="&lt;b&gt;Data store&lt;/b&gt;" vertex="1">
+          <mxGeometry height="50" width="140" x="750" y="14" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_stop" parent="legend" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#e8ebee;strokeColor=#9aa4ad;strokeWidth=1.5;spacing=2;fontSize=13;" value="&lt;b&gt;Fallback or stop&lt;/b&gt;" vertex="1">
+          <mxGeometry height="42" width="210" x="904" y="18" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_t1" parent="legend" style="text;html=1;align=left;verticalAlign=middle;fontSize=12;fontColor=#333333;whiteSpace=nowrap;" value="Next step" vertex="1">
+          <mxGeometry height="24" width="70" x="1196" y="11" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_t2" parent="legend" style="text;html=1;align=left;verticalAlign=middle;fontSize=12;fontColor=#333333;whiteSpace=nowrap;" value="Between boxes" vertex="1">
+          <mxGeometry height="24" width="90" x="1196" y="43" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_e1" edge="1" parent="legend" style="html=1;rounded=0;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1130" y="23" as="sourcePoint" />
+            <mxPoint x="1188" y="23" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lg_e2" edge="1" parent="legend" style="html=1;rounded=0;endArrow=block;endFill=1;strokeWidth=3.5;strokeColor=#202124;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1130" y="55" as="sourcePoint" />
+            <mxPoint x="1188" y="55" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="box1" parent="1" style="swimlane;html=1;whiteSpace=wrap;startSize=72;horizontal=1;rounded=1;absoluteArcSize=1;arcSize=24;fillColor=#e2e2de;swimlaneFillColor=#f3f3f1;strokeColor=#8f8f8a;strokeWidth=2;fontSize=14;fontColor=#202124;align=center;verticalAlign=middle;collapsible=0;container=1;swimlaneLine=1;" value="&lt;b style=&quot;font-size:24px&quot;&gt;2. Planner&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:13px&quot;&gt;Turns one question into checked search tasks. The model proposes; Python decides the paper scope.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="1060" width="1600" x="40" y="1406" as="geometry" />
+        </mxCell>
+        <mxCell id="p_a" parent="box1" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;container=1;collapsible=0;pointerEvents=0;fillColor=#ffffff;strokeColor=#c4c4bf;strokeWidth=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;spacing=0;fontSize=13;fontColor=#555555;" value="&lt;b&gt;A. Find the papers&lt;/b&gt;" vertex="1">
+          <mxGeometry height="934" width="282" x="28" y="92" as="geometry" />
+        </mxCell>
+        <mxCell id="p1" parent="p_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#dce9fa;strokeColor=#6da5df;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size: 11px;&quot;&gt;P1&lt;/font&gt;&amp;nbsp; &lt;b&gt;Question + history&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size: 12px;&quot;&gt;The user&#39;s question and the last 6 chat messages if using UI&lt;/font&gt;" vertex="1">
+          <mxGeometry height="108" width="250" x="16" y="34" as="geometry" />
+        </mxCell>
+        <mxCell id="p2" parent="p_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;P2&lt;/font&gt;&amp;nbsp; &lt;b&gt;Find paper references&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Python matches the question against catalog names: clear titles, weak candidates, ambiguous flag.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;find_paper_references()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="120" width="250" x="16" y="184" as="geometry" />
+        </mxCell>
+        <mxCell id="p_cat" parent="p_a" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=9;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=4;fontSize=14;fontColor=#202124;fillColor=#e3f1e1;strokeColor=#81b782;strokeWidth=1.5;" value="&lt;b&gt;Paper catalog&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size: 12px;&quot;&gt;Assembled when planning starts&lt;br&gt;Indexed papers + catalog details + aliases. Output stored in SQLite&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size: 11px;&quot;&gt;list_indexed_papers()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="108" width="250" x="16" y="346" as="geometry" />
+        </mxCell>
+        <mxCell id="p_card_names" parent="p_a" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=9;fontSize=13;fontColor=#333333;fillColor=#fbfbf9;strokeColor=#b8b8b3;strokeWidth=1;" value="&lt;b&gt;Where the catalog comes from&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;Chroma:&lt;/b&gt; indexed paper IDs, filenames, source links and first-page text for possible author clues.&lt;br&gt;&lt;br&gt;&lt;b&gt;index.csv:&lt;/b&gt; paper titles, numbers, years and arXiv links. &lt;b&gt;Reading guide:&lt;/b&gt; recommended reading depth.&lt;br&gt;&lt;br&gt;&lt;b&gt;SQLite:&lt;/b&gt; maintained aliases, if available; alias defaults can also be used.&lt;br&gt;&lt;br&gt;&lt;b&gt;How names are matched&lt;/b&gt;&lt;br&gt;Compare titles and aliases; derive some names from titles. Author clues may produce candidates. Ambiguous names remain uncertain.&lt;br&gt;&lt;br&gt;&lt;b&gt;Example:&lt;/b&gt; “What does RAG use?” → find the indexed RAG paper → search its text for evidence." vertex="1">
+          <mxGeometry height="394" width="250" x="16" y="484" as="geometry" />
+        </mxCell>
+        <mxCell id="e1_p1_p2" edge="1" parent="p_a" source="p1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p2" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2_p_cat_p2" edge="1" parent="p_a" source="p_cat" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#5f9a60;dashed=1;fontSize=11;fontColor=#3f6f40;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="p2" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p_b" parent="box1" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;container=1;collapsible=0;pointerEvents=0;fillColor=#ffffff;strokeColor=#c4c4bf;strokeWidth=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;spacing=0;fontSize=13;fontColor=#555555;" value="&lt;b&gt;B. Build the tasks&lt;/b&gt;" vertex="1">
+          <mxGeometry height="934" width="598" x="344" y="92" as="geometry" />
+        </mxCell>
+        <mxCell id="p3" parent="p_b" style="rhombus;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=40;spacingRight=40;fontSize=13;fontColor=#202124;fillColor=#fff4ce;strokeColor=#e2b94b;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;P3&lt;/font&gt;&lt;br&gt;&lt;b&gt;Can Python split clear question parts?&lt;/b&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="16" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="p4" parent="p_b" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;P4&lt;/font&gt;  &lt;b&gt;Yes: Python creates tasks&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Use the user’s words for each clear question and its paper. No Gemma planning call.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;plan_explicit_clauses()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="332" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="p5" parent="p_b" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;P5&lt;/font&gt; &lt;b&gt;Prepare for Gemma&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;When neither Python route applies, send the question, available history and indexed paper choices for planning.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="112" width="250" x="16" y="184" as="geometry" />
+        </mxCell>
+        <mxCell id="p6" parent="p_b" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#ffe2c0;strokeColor=#e59945;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;P6&lt;/font&gt;  &lt;b&gt;Gemma proposes tasks&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Interpret the question and suggest focused searches, paper choices and any clarification. Does not answer yet.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;request_structured_response()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="112" width="250" x="16" y="334" as="geometry" />
+        </mxCell>
+        <mxCell id="p7" parent="p_b" style="rhombus;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=40;spacingRight=40;fontSize=13;fontColor=#202124;fillColor=#fff4ce;strokeColor=#e2b94b;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;P7&lt;/font&gt;&lt;br&gt;&lt;b&gt;Same question for each paper?&lt;/b&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="16" y="476" as="geometry" />
+        </mxCell>
+        <mxCell id="p8" parent="p_b" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;P8&lt;/font&gt; &lt;b&gt;Create one task per paper&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Ask the same thing for each paper separately. Keep any unidentified subject as unresolved.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;per_paper_tasks()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="332" y="476" as="geometry" />
+        </mxCell>
+        <mxCell id="p9" parent="p_b" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;P9&lt;/font&gt; &lt;b&gt;Check each task’s scope&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Python checks Gemma’s paper choice and assigns one scope: paper, broad or unresolved.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="108" width="250" x="16" y="634" as="geometry" />
+        </mxCell>
+        <mxCell id="p_card_scope" parent="p_b" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=9;fontSize=12;fontColor=#333333;fillColor=#fbfbf9;strokeColor=#b8b8b3;strokeWidth=1;" value="&lt;b&gt;Three scopes used by retrieval&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;paper:&lt;/b&gt; Search one or more identified papers. A task may carry candidates that retrieval tries to resolve.&lt;br&gt;&lt;br&gt;&lt;b&gt;broad:&lt;/b&gt; Search across the collection.&lt;br&gt;&lt;br&gt;&lt;b&gt;unresolved:&lt;/b&gt; The requested paper is unclear; do not search this task.&lt;br&gt;&lt;br&gt;Python-created tasks use these same scope values." vertex="1">
+          <mxGeometry height="166" width="250" x="332" y="626" as="geometry" />
+        </mxCell>
+        <mxCell id="p10" parent="p_b" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size: 11px;&quot;&gt;P10&lt;/font&gt; &lt;b&gt;Clean up the tasks&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size: 12px;&quot;&gt;Remove duplicates and split some tasks with 3+ papers.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="118" width="250" x="16" y="784" as="geometry" />
+        </mxCell>
+        <mxCell id="e4_p3_p4" edge="1" parent="p_b" source="p3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="p4" value="yes">
+          <mxGeometry relative="1" x="-0.1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5_p3_p5" edge="1" parent="p_b" source="p3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p_direct_check" value="no">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6_p5_p6" edge="1" parent="p_b" source="p5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p6" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7_p6_p7" edge="1" parent="p_b" source="p6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p7" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8_p7_p8" edge="1" parent="p_b" source="p7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="p8" value="yes">
+          <mxGeometry relative="1" x="-0.1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9_p7_p9" edge="1" parent="p_b" source="p7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p9" value="no">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10_p9_p10" edge="1" parent="p_b" source="p9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p10" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p_direct_check" parent="p_b" style="rhombus;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacingLeft=35;spacingRight=35;fontSize=13;fillColor=#fff4ce;strokeColor=#e2b94b;" value="&lt;b&gt;One clear standalone task?&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;One known paper; no complex wording&lt;/font&gt;" vertex="1">
+          <mxGeometry height="120" width="250" x="332" y="184" as="geometry" />
+        </mxCell>
+        <mxCell id="p_direct_task" parent="p_b" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fillColor=#e3f1e1;strokeColor=#81b782;" value="&lt;b&gt;Use the original question&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot;&gt;Create one paper-scoped search task. Skip Gemma planning.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; style=&quot;font-size:11px&quot;&gt;can_search_as_one_task()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="110" width="250" x="332" y="335" as="geometry" />
+        </mxCell>
+        <mxCell id="e_direct_no" edge="1" parent="p_b" source="p_direct_check" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#333333;fontSize=11;labelBackgroundColor=#ffffff;" target="p5" value="no">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_direct_yes" edge="1" parent="p_b" source="p_direct_check" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#333333;fontSize=11;labelBackgroundColor=#ffffff;" target="p_direct_task" value="yes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p_c" parent="box1" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;container=1;collapsible=0;pointerEvents=0;fillColor=#ffffff;strokeColor=#c4c4bf;strokeWidth=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;spacing=0;fontSize=13;fontColor=#555555;" value="&lt;b&gt;C. Check and hand off&lt;/b&gt;" vertex="1">
+          <mxGeometry height="934" width="598" x="976" y="92" as="geometry" />
+        </mxCell>
+        <mxCell id="p_rule" parent="p_c" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=9;fontSize=12;fontColor=#333333;fillColor=#fffdf4;strokeColor=#e2b94b;strokeWidth=1;" value="&lt;b&gt;Planner rule&lt;/b&gt;&lt;br&gt;The planner never receives passages, expected answers or evaluation labels. The model can suggest a paper, but Python keeps it only if the user&#39;s own words name it. Only Python can supply candidate papers." vertex="1">
+          <mxGeometry height="92" width="566" x="16" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="p11" parent="p_c" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#dce9fa;strokeColor=#6da5df;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;P11&lt;/font&gt;&amp;nbsp; &lt;b&gt;Approved plan (browser)&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;A plan the user approved skips planning. If its papers left the index, the user is asked to revise.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="108" width="250" x="16" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="p12" parent="p_c" style="rhombus;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=40;spacingRight=40;fontSize=13;fontColor=#202124;fillColor=#fff4ce;strokeColor=#e2b94b;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;P12&lt;/font&gt;&amp;nbsp; &lt;b&gt;Need the user first?&lt;/b&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="16" y="476" as="geometry" />
+        </mxCell>
+        <mxCell id="p13" parent="p_c" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#e8ebee;strokeColor=#9aa4ad;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;P13&lt;/font&gt;&amp;nbsp; &lt;b&gt;Stop before searching&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Browser: ask for clarification, or show a multi-task plan to approve. Automatic calls: “I don&#39;t know - …”.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;choose_route_after_planning()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="16" y="646" as="geometry" />
+        </mxCell>
+        <mxCell id="p14" parent="p_c" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;P14&lt;/font&gt;&amp;nbsp; &lt;b&gt;Limit the batch&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Up to 5 searches per response (14,000 ÷ 2,400 characters). Unresolved tasks take no slot. The rest are listed as unfinished.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="332" y="476" as="geometry" />
+        </mxCell>
+        <mxCell id="p15" parent="p_c" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#dce9fa;strokeColor=#6da5df;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;P15&lt;/font&gt;&amp;nbsp; &lt;b&gt;Search tasks&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Goes to retrieval, one entry per requested result.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="90" width="250" x="332" y="324" as="geometry" />
+        </mxCell>
+        <mxCell id="p_card_task" parent="p_c" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=9;fontSize=12;fontColor=#333333;fillColor=#fbfbf9;strokeColor=#b8b8b3;strokeWidth=1;" value="&lt;b&gt;What each task carries&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;question&lt;/b&gt;: stand-alone wording, never an answer&lt;br&gt;&lt;b&gt;paper&lt;/b&gt;: one title, a list, or none&lt;br&gt;&lt;b&gt;candidate_papers&lt;/b&gt;: possible titles, from Python only&lt;br&gt;&lt;b&gt;scope&lt;/b&gt;: paper, broad or unresolved&lt;br&gt;&lt;br&gt;&lt;b&gt;route&lt;/b&gt; (whole plan): direct, multipart or comparison" vertex="1">
+          <mxGeometry height="192" width="250" x="332" y="646" as="geometry" />
+        </mxCell>
+        <mxCell id="e14_p11_p12" edge="1" parent="p_c" source="p11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p12" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e15_p12_p14" edge="1" parent="p_c" source="p12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="p14" value="no">
+          <mxGeometry relative="1" x="-0.1" as="geometry" />
+        </mxCell>
+        <mxCell id="e16_p12_p13" edge="1" parent="p_c" source="p12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="p13" value="yes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e17_p14_p15" edge="1" parent="p_c" source="p14" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="p15" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3_p2_p3" edge="1" parent="box1" source="p2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="p3" value="paper matches">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11_p4_p12" edge="1" parent="box1" source="p4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="p12" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12_p8_p12" edge="1" parent="box1" source="p8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="p12" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13_p10_p12" edge="1" parent="box1" source="p10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="p12" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="959" y="935" />
+              <mxPoint x="959" y="630" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p_original_question_to_p3" edge="1" parent="box1" source="p1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#3267a8;fontSize=11;fontColor=#3267a8;labelBackgroundColor=#ffffff;exitX=0.955;exitY=0.018;entryX=0;entryY=0;entryDx=0;entryDy=0;exitDx=0;exitDy=0;exitPerimeter=0;" target="p3" value="original question">
+          <mxGeometry relative="1" x="0.1288" as="geometry">
+            <Array as="points">
+              <mxPoint x="280" y="127.9" />
+              <mxPoint x="280" y="134" />
+              <mxPoint x="422.5" y="134" />
+            </Array>
+            <mxPoint x="280" y="164.96000000000004" as="sourcePoint" />
+            <mxPoint x="471" y="143.99999999999955" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_direct_handoff" edge="1" parent="box1" source="p_direct_task" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;strokeColor=#333333;fontSize=11;labelBackgroundColor=#ffffff;" target="p12" value="task ready">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="box2" parent="1" style="swimlane;html=1;whiteSpace=wrap;startSize=72;horizontal=1;rounded=1;absoluteArcSize=1;arcSize=24;fillColor=#e2e2de;swimlaneFillColor=#f3f3f1;strokeColor=#8f8f8a;strokeWidth=2;fontSize=14;fontColor=#202124;align=center;verticalAlign=middle;collapsible=0;container=1;swimlaneLine=1;" value="&lt;b style=&quot;font-size:24px&quot;&gt;3. Retrieval&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:13px&quot;&gt;Finds passages for each task, then shares one character budget across all tasks.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="1156" width="1600" x="1790" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="r_a" parent="box2" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;container=1;collapsible=0;pointerEvents=0;fillColor=#ffffff;strokeColor=#c4c4bf;strokeWidth=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;spacing=0;fontSize=13;fontColor=#555555;" value="&lt;b&gt;A. Repeat for each task&lt;/b&gt;" vertex="1">
+          <mxGeometry height="854" width="1544" x="28" y="92" as="geometry" />
+        </mxCell>
+        <mxCell id="r1" parent="r_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#dce9fa;strokeColor=#6da5df;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;R1&lt;/font&gt;&amp;nbsp; &lt;b&gt;Search tasks&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;From the planner: question, paper scope and scope type.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="250" x="16" y="42" as="geometry" />
+        </mxCell>
+        <mxCell id="r2" parent="r_a" style="rhombus;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=40;spacingRight=40;fontSize=13;fontColor=#202124;fillColor=#fff4ce;strokeColor=#e2b94b;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;R2&lt;/font&gt;&lt;br&gt;&lt;b&gt;Task marked unresolved?&lt;/b&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="16" y="176" as="geometry" />
+        </mxCell>
+        <mxCell id="r3" parent="r_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#e8ebee;strokeColor=#9aa4ad;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;R3&lt;/font&gt; &lt;b&gt;Skip this task&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;No safe paper scope: do not search or borrow another task’s evidence. Report this part as unanswered.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="108" width="250" x="332" y="184" as="geometry" />
+        </mxCell>
+        <mxCell id="r4" parent="r_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size: 11px;&quot;&gt;R4&lt;/font&gt;&amp;nbsp; &lt;b&gt;Build the query&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size: 12px;&quot;&gt;The task&#39;s question. May include the user’s full question in the search text to help explain a short sub-question.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size: 11px;&quot;&gt;retrieve_task_evidence()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="112" width="250" x="16" y="358" as="geometry" />
+        </mxCell>
+        <mxCell id="r5" parent="r_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size: 11px;&quot;&gt;R5&lt;/font&gt;&amp;nbsp; &lt;b&gt;Expand abbreviations&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size: 12px;&quot;&gt;e.g., &#39;NLP → natural language processing&#39;, only when the indexed text gives one definition.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size: 11px;&quot;&gt;expand_defined_abbreviations()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="112" width="250" x="16" y="532" as="geometry" />
+        </mxCell>
+        <mxCell id="r_study" parent="r_a" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=9;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=4;fontSize=14;fontColor=#202124;fillColor=#e3f1e1;strokeColor=#81b782;strokeWidth=1.5;" value="&lt;b&gt;Catalog + guide&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;index.csv and reading guide. Broad searches only, keyword side only.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="108" width="250" x="16" y="720" as="geometry" />
+        </mxCell>
+        <mxCell id="r6" parent="r_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#ffe2c0;strokeColor=#e59945;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;R6&lt;/font&gt;&amp;nbsp; &lt;b&gt;Vector search&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;EmbeddingGemma embeds the query. Chroma cosine search, top 120, same paper filter.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;find_vector_candidates()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="112" width="250" x="332" y="358" as="geometry" />
+        </mxCell>
+        <mxCell id="r_chunks" parent="r_a" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=9;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=4;fontSize=14;fontColor=#202124;fillColor=#e3f1e1;strokeColor=#81b782;strokeWidth=1.5;" value="&lt;b&gt;research_papers&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Child chunks and vectors (built in box 1)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="92" width="250" x="332" y="540" as="geometry" />
+        </mxCell>
+        <mxCell id="r7" parent="r_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;R7&lt;/font&gt;&amp;nbsp; &lt;b&gt;BM25 keyword search&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Python scores every chunk in scope; no search server. Top 24. Names and numbers match literally.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;find_bm25_candidates()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="120" width="250" x="332" y="714" as="geometry" />
+        </mxCell>
+        <mxCell id="r8" parent="r_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;R8&lt;/font&gt;&amp;nbsp; &lt;b&gt;Merge + dedupe&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Union of both lists by chunk ID. At most 144 candidates.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;find_hybrid_candidates()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="108" width="250" x="648" y="536" as="geometry" />
+        </mxCell>
+        <mxCell id="r9" parent="r_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#ffe2c0;strokeColor=#e59945;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;R9&lt;/font&gt;&amp;nbsp; &lt;b&gt;MiniLM reranker&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Cross-encoder scores each (query, child chunk) pair. Keeps score ≥ 1.5, best first.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;rerank_passage_candidates()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="108" width="250" x="964" y="536" as="geometry" />
+        </mxCell>
+        <mxCell id="r10" parent="r_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;R10&lt;/font&gt;&amp;nbsp; &lt;b&gt;Expand to parent section&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Fetch the section by parent_id. Window up to 2,400 characters, starting 350 before the child. One per section, up to 5 per search.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;expand_parent_section_windows()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="140" width="250" x="1280" y="520" as="geometry" />
+        </mxCell>
+        <mxCell id="r_sections" parent="r_a" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=9;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=4;fontSize=14;fontColor=#202124;fillColor=#e3f1e1;strokeColor=#81b782;strokeWidth=1.5;" value="&lt;b&gt;research_sections&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Full section text, read by ID (built in box 1)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="92" width="250" x="1280" y="350" as="geometry" />
+        </mxCell>
+        <mxCell id="r11" parent="r_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size: 11px;&quot;&gt;R11&lt;/font&gt;&amp;nbsp; &lt;b&gt;Experimental keyword override&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size: 12px;&quot;&gt;With several tasks, MiniLM&#39;s top passage stays first and the best accepted BM25 passage moves second.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="104" width="250" x="1280" y="719" as="geometry" />
+        </mxCell>
+        <mxCell id="r12" parent="r_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size: 11px;&quot;&gt;R12&lt;/font&gt;&amp;nbsp; &lt;b&gt;Experimental&lt;/b&gt;&amp;nbsp;&lt;b&gt;Premise check&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size: 12px;&quot;&gt;For some question types, Python looks for a sentence in the paper that shows contradiction.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size: 11px;&quot;&gt;find_premise_ruling()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="130" width="250" x="964" y="706" as="geometry" />
+        </mxCell>
+        <mxCell id="r_card_scope" parent="r_a" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=9;fontSize=12;fontColor=#333333;fillColor=#fbfbf9;strokeColor=#b8b8b3;strokeWidth=1;" value="&lt;div style=&quot;font-size:14px&quot;&gt;&lt;b&gt;Three task scopes — with examples&lt;/b&gt;&lt;/div&gt;&lt;table style=&quot;width:100%;border-collapse:collapse;font-size:13px;margin-top:4px&quot; cellpadding=&quot;5&quot;&gt;&lt;tr style=&quot;border-bottom:1px solid #cfcfca&quot;&gt;&lt;td style=&quot;width:130px&quot;&gt;&lt;b&gt;paper&lt;/b&gt;&lt;/td&gt;&lt;td&gt;“What optimizer does BERT use?” → search BERT. A task may name several verified papers, or carry possible candidates for retrieval to resolve.&lt;/td&gt;&lt;/tr&gt;&lt;tr style=&quot;border-bottom:1px solid #cfcfca&quot;&gt;&lt;td&gt;&lt;b&gt;broad&lt;/b&gt;&lt;/td&gt;&lt;td&gt;“Which papers discuss retrieval?” → search across the collection; guide and catalog can join keyword search.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;&lt;b&gt;unresolved&lt;/b&gt;&lt;/td&gt;&lt;td&gt;“What optimizer did Orion-4 use?” → if no paper or candidates can be identified, skip this task and report it unanswered.&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;font style=&quot;font-size:11px&quot;&gt;These are illustrative outcomes; the actual scope depends on the planner and catalog.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="202" width="882" x="648" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="e18_r1_r2" edge="1" parent="r_a" source="r1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="r2" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e19_r2_r3" edge="1" parent="r_a" source="r2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="r3" value="yes">
+          <mxGeometry relative="1" x="-0.1" as="geometry" />
+        </mxCell>
+        <mxCell id="e20_r2_r4" edge="1" parent="r_a" source="r2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="r4" value="no">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e21_r4_r5" edge="1" parent="r_a" source="r4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="r5" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e22_r5_r6" edge="1" parent="r_a" source="r5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="r6" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e23_r5_r7" edge="1" parent="r_a" source="r5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.28;entryDx=0;entryDy=0;" target="r7" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e24_r_chunks_r6" edge="1" parent="r_a" source="r_chunks" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#5f9a60;dashed=1;fontSize=11;fontColor=#3f6f40;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="r6" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e25_r_chunks_r7" edge="1" parent="r_a" source="r_chunks" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#5f9a60;dashed=1;fontSize=11;fontColor=#3f6f40;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="r7" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e26_r_study_r7" edge="1" parent="r_a" source="r_study" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#5f9a60;dashed=1;fontSize=11;fontColor=#3f6f40;labelBackgroundColor=#ffffff;exitX=1;exitY=0.7222;exitDx=0;exitDy=0;entryX=0;entryY=0.7;entryDx=0;entryDy=0;" target="r7" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e27_r6_r8" edge="1" parent="r_a" source="r6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="r8" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e28_r7_r8" edge="1" parent="r_a" source="r7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="r8" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e29_r8_r9" edge="1" parent="r_a" source="r8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="r9" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e30_r9_r10" edge="1" parent="r_a" source="r9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="r10" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e31_r_sections_r10" edge="1" parent="r_a" source="r_sections" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#5f9a60;dashed=1;fontSize=11;fontColor=#3f6f40;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="r10" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e32_r10_r11" edge="1" parent="r_a" source="r10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="r11" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e33_r11_r12" edge="1" parent="r_a" source="r11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="r12" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r_b" parent="box2" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;container=1;collapsible=0;pointerEvents=0;fillColor=#ffffff;strokeColor=#c4c4bf;strokeWidth=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;spacing=0;fontSize=13;fontColor=#555555;" value="&lt;b&gt;B. Combine all tasks&lt;/b&gt;" vertex="1">
+          <mxGeometry height="160" width="1544" x="28" y="962" as="geometry" />
+        </mxCell>
+        <mxCell id="r13" parent="r_b" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size: 11px;&quot;&gt;R13&lt;/font&gt;&amp;nbsp;&lt;b&gt;Experimental&lt;/b&gt;&amp;nbsp;&lt;b&gt;Retry empty tasks&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size: 12px;&quot;&gt;If Task 1 finds evidence but Task 2’s passages all fall below the cutoff (considered empty task), keep Task 2’s two best passages. A lower-scoring passage may still contain the answer.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="118" width="250" x="964" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="r14" parent="r_b" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;R14&lt;/font&gt;&amp;nbsp; &lt;b&gt;Share the budget&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;14,000 characters in total. Tasks take turns, each capped at an equal share. Windows are never cut. A shared passage is stored once.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="118" width="250" x="648" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="r15" parent="r_b" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;R15&lt;/font&gt;&amp;nbsp; &lt;b&gt;Assign source labels&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;S1, S2 … grouped by task. A premise correction counts only if its passage kept a label.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;assign_citation_labels()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="118" width="250" x="332" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="r16" parent="r_b" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#dce9fa;strokeColor=#6da5df;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;R16&lt;/font&gt;&amp;nbsp; &lt;b&gt;Evidence&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Labelled passages with title, location and link, plus premise corrections.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="118" width="250" x="16" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="r_card_funnel" parent="r_b" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=9;fontSize=13;fontColor=#333333;fillColor=#fffdf4;strokeColor=#e2b94b;strokeWidth=1;" value="&lt;b&gt;The funnel&lt;/b&gt;&lt;br&gt;120 vector + 24 keyword → score ≥ 1.5 → up to 5 windows per search → 14,000 characters for the whole answer." vertex="1">
+          <mxGeometry height="118" width="250" x="1280" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="e35_r13_r14" edge="1" parent="r_b" source="r13" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="r14" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e36_r14_r15" edge="1" parent="r_b" source="r14" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="r15" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e37_r15_r16" edge="1" parent="r_b" source="r15" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="r16" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e34_r12_r13" edge="1" parent="box2" source="r12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="r13" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="box3" parent="1" style="swimlane;html=1;whiteSpace=wrap;startSize=72;horizontal=1;rounded=1;absoluteArcSize=1;arcSize=24;fillColor=#e2e2de;swimlaneFillColor=#f3f3f1;strokeColor=#8f8f8a;strokeWidth=2;fontSize=14;fontColor=#202124;align=center;verticalAlign=middle;collapsible=0;container=1;swimlaneLine=1;" value="&lt;b style=&quot;font-size:24px&quot;&gt;4. Generate and check the answer&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:13px&quot;&gt;Gemma uses the selected evidence; Python checks draft details against the available passages.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="1060" width="1600" x="1790" y="1406" as="geometry" />
+        </mxCell>
+        <mxCell id="g_a" parent="box3" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;container=1;collapsible=0;pointerEvents=0;fillColor=#ffffff;strokeColor=#c4c4bf;strokeWidth=1;align=left;verticalAlign=top;spacingLeft=156;spacingTop=4;spacing=0;fontSize=13;fontColor=#555555;" value="&lt;b&gt;Generate and check process, at answer time&lt;/b&gt;" vertex="1">
+          <mxGeometry height="934" width="1544" x="29" y="92" as="geometry" />
+        </mxCell>
+        <mxCell id="g1" parent="g_a" style="rhombus;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=40;spacingRight=40;fontSize=13;fontColor=#202124;fillColor=#fff4ce;strokeColor=#e2b94b;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;G1&lt;/font&gt;&amp;nbsp; &lt;b&gt;Any evidence?&lt;/b&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="16" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="g2" parent="g_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#e8ebee;strokeColor=#9aa4ad;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;G2&lt;/font&gt;&amp;nbsp; &lt;b&gt;Abstain without Gemma&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;“I don&#39;t know - this is not in the documents.” Gemma is not asked to guess.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="108" width="250" x="16" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="g_card" parent="g_a" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=9;fontSize=13;fontColor=#333333;fillColor=#fffdf4;strokeColor=#e2b94b;strokeWidth=1;" value="&lt;b&gt;What these checks can prove&lt;/b&gt;&lt;br&gt;The gates compare citations, scope, numbers, units and wording. They cannot prove that the meaning is right, or that retrieval found the best passage. They run automatically, with no human review.&lt;br&gt;&lt;br&gt;&lt;b&gt;Example&lt;/b&gt;&lt;br&gt;Asked for the pre-training batch size, the draft gives the fine-tuning value. Gate 10 rejects it and the task is listed under “Missing information”.&lt;br&gt;&lt;br&gt;&lt;b&gt;When G3 says yes&lt;/b&gt;&lt;br&gt;Gemma is skipped. An empty draft passes through the gates and G7 adds the corrections." vertex="1">
+          <mxGeometry height="340" width="250" x="16" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="g_truth_card" parent="g_a" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=9;fontSize=13;fontColor=#333333;fillColor=#fffdf4;strokeColor=#e2b94b;strokeWidth=1;" value="&lt;b&gt;What the agent uses as evidence&lt;/b&gt;&lt;br&gt;&lt;b&gt;Selected passages:&lt;/b&gt; retrieved text labeled S1, S2, and so on. Each answer part should cite passages allowed for its task.&lt;br&gt;&lt;br&gt;&lt;b&gt;Purpose:&lt;/b&gt; provide the source text Gemma uses and Python can check. A retrieved passage may still be incomplete or misleading.&lt;br&gt;&lt;br&gt;&lt;b&gt;Missing support:&lt;/b&gt; a task without enough evidence may be marked unavailable." vertex="1">
+          <mxGeometry height="206" width="566" x="16" y="704" as="geometry" />
+        </mxCell>
+        <mxCell id="g3" parent="g_a" style="rhombus;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=40;spacingRight=40;fontSize=13;fontColor=#202124;fillColor=#fff4ce;strokeColor=#e2b94b;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;G3&lt;/font&gt;&amp;nbsp; &lt;b&gt;Corrections answer every task?&lt;/b&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="332" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="g4" parent="g_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;G4&lt;/font&gt;&amp;nbsp; &lt;b&gt;Build the grounded prompt&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;One detail per task with its allowed source labels. Passages are marked UNTRUSTED: data, never instructions.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;generate_grounded_draft()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="332" y="184" as="geometry" />
+        </mxCell>
+        <mxCell id="g5" parent="g_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#ffe2c0;strokeColor=#e59945;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;G5&lt;/font&gt;&amp;nbsp; &lt;b&gt;Gemma draft&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;One call to gemma3:4b, temperature 0. One record per task: availability, source_ids, answer. Unsupported means unavailable.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="118" width="250" x="332" y="350" as="geometry" />
+        </mxCell>
+        <mxCell id="g_truth" parent="g_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=8;fontSize=14;fontColor=#202124;fillColor=#e3f1e1;strokeColor=#5f9a60;strokeWidth=2;" value="&lt;b style=&quot;font-size:16px&quot;&gt;Selected evidence&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Passages S1 … Sn selected for this question. Passed in memory to Gemma and the answer checks; originally retrieved from the index.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="170" width="250" x="332" y="510" as="geometry" />
+        </mxCell>
+        <mxCell id="g_gates" parent="g_a" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;container=1;collapsible=0;pointerEvents=0;fillColor=#f8f4fb;strokeColor=#aa81c5;strokeWidth=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;spacing=0;fontSize=13;fontColor=#555555;" value="&lt;b&gt;Verification gates: check each record against the question and selected evidence. A failed check can reject that record. No model call.&lt;/b&gt;" vertex="1">
+          <mxGeometry height="636" width="598" x="632" y="24" as="geometry" />
+        </mxCell>
+        <mxCell id="g_gate1" parent="g_gates" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=3;spacingLeft=8;spacingRight=8;fontSize=12;fontColor=#333333;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1;" value="&lt;b&gt;1. Citations.&lt;/b&gt; The task is resolved, at least one label is cited, and every cited label exists." vertex="1">
+          <mxGeometry height="44" width="570" x="14" y="46" as="geometry" />
+        </mxCell>
+        <mxCell id="g_gate2" parent="g_gates" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=3;spacingLeft=8;spacingRight=8;fontSize=12;fontColor=#333333;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1;" value="&lt;b&gt;2. Task scope.&lt;/b&gt; Labels must come from this task&#39;s passages and papers. Others are dropped only if the number gate can still prove the answer." vertex="1">
+          <mxGeometry height="44" width="570" x="14" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="g_gate3" parent="g_gates" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=3;spacingLeft=8;spacingRight=8;fontSize=12;fontColor=#333333;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1;" value="&lt;b&gt;3. Named variant.&lt;/b&gt; A requested benchmark year must be in a cited paragraph. A requested model size or version must not conflict with it." vertex="1">
+          <mxGeometry height="44" width="570" x="14" y="154" as="geometry" />
+        </mxCell>
+        <mxCell id="g_gate4" parent="g_gates" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=3;spacingLeft=8;spacingRight=8;fontSize=12;fontColor=#333333;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1;" value="&lt;b&gt;4. Unit.&lt;/b&gt; A request for dollars or GPU hours needs that unit in both the answer and the cited text." vertex="1">
+          <mxGeometry height="44" width="570" x="14" y="208" as="geometry" />
+        </mxCell>
+        <mxCell id="g_gate5" parent="g_gates" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=3;spacingLeft=8;spacingRight=8;fontSize=12;fontColor=#333333;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1;" value="&lt;b&gt;5. Answer text.&lt;/b&gt; Not empty, and does not say the fact is “not specified”." vertex="1">
+          <mxGeometry height="32" width="570" x="14" y="262" as="geometry" />
+        </mxCell>
+        <mxCell id="g_gate6" parent="g_gates" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=3;spacingLeft=8;spacingRight=8;fontSize=12;fontColor=#333333;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1;" value="&lt;b&gt;6. Numbers.&lt;/b&gt; Every number must appear in the cited text (180K = 180,000, eight = 8). If not, search this task&#39;s other passages and add that citation." vertex="1">
+          <mxGeometry height="44" width="570" x="14" y="304" as="geometry" />
+        </mxCell>
+        <mxCell id="g_gate7" parent="g_gates" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=3;spacingLeft=8;spacingRight=8;fontSize=12;fontColor=#333333;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1;" value="&lt;b&gt;7. Property.&lt;/b&gt; The sentence holding the value must name what was asked: batch size, learning rate, a named benchmark." vertex="1">
+          <mxGeometry height="44" width="570" x="14" y="358" as="geometry" />
+        </mxCell>
+        <mxCell id="g_gate8" parent="g_gates" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=3;spacingLeft=8;spacingRight=8;fontSize=12;fontColor=#333333;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1;" value="&lt;b&gt;8. Named kind.&lt;/b&gt; “Which optimizer?” must name an optimizer. Same for hardware, tokenizer, activation and others." vertex="1">
+          <mxGeometry height="44" width="570" x="14" y="412" as="geometry" />
+        </mxCell>
+        <mxCell id="g_gate9" parent="g_gates" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=3;spacingLeft=8;spacingRight=8;fontSize=12;fontColor=#333333;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1;" value="&lt;b&gt;9. Rate vs total.&lt;/b&gt; A per-unit value cannot be given as a total when the passages also state the total." vertex="1">
+          <mxGeometry height="44" width="570" x="14" y="466" as="geometry" />
+        </mxCell>
+        <mxCell id="g_gate10" parent="g_gates" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=3;spacingLeft=8;spacingRight=8;fontSize=12;fontColor=#333333;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1;" value="&lt;b&gt;10. Training stage.&lt;/b&gt; A value tied to another stage is rejected. If the whole-run total was given and the passages state the stage&#39;s own figure, that sentence replaces the answer and must pass every gate again." vertex="1">
+          <mxGeometry height="60" width="570" x="14" y="520" as="geometry" />
+        </mxCell>
+        <mxCell id="g_gate11" parent="g_gates" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacing=3;spacingLeft=8;spacingRight=8;fontSize=12;fontColor=#333333;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1;" value="&lt;b&gt;11. Named source.&lt;/b&gt; “According to the X paper” needs a citation from X." vertex="1">
+          <mxGeometry height="32" width="570" x="14" y="590" as="geometry" />
+        </mxCell>
+        <mxCell id="g6" parent="g_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#e8ebee;strokeColor=#9aa4ad;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;G6&lt;/font&gt;&amp;nbsp; &lt;b&gt;Rejected record&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Reason saved in the trace. This task becomes a missing part; the other tasks carry on.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="108" width="250" x="1280" y="184" as="geometry" />
+        </mxCell>
+        <mxCell id="g7" parent="g_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;G7&lt;/font&gt;&amp;nbsp; &lt;b&gt;Add premise corrections&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;The task&#39;s answer becomes the paper&#39;s own sentence: “This question assumes something the paper rules out…”&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;add_premise_corrections()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="648" y="704" as="geometry" />
+        </mxCell>
+        <mxCell id="g8" parent="g_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;G8&lt;/font&gt;&amp;nbsp; &lt;b&gt;Compute status and format&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;All tasks covered: answered. Some: partial + “Missing information”. None: abstained. No model call.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;format_cited_answer()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="964" y="704" as="geometry" />
+        </mxCell>
+        <mxCell id="g9" parent="g_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#dce9fa;strokeColor=#6da5df;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;G9&lt;/font&gt;&amp;nbsp; &lt;b&gt;Final answer&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Text with [S1] labels. Source cards come from stored metadata, never from model-written links.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="1280" y="704" as="geometry" />
+        </mxCell>
+        <mxCell id="g_boundary" parent="g_a" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=9;fontSize=12;fontColor=#333333;fillColor=#fffdf4;strokeColor=#e2b94b;strokeWidth=1;verticalAlign=middle;spacing=4;spacingLeft=10;" value="&lt;b&gt;Reference boundary.&lt;/b&gt; Reference answers from evaluation never enter the planner, retrieval or this process. They stay outside the app and are used only afterwards, to grade the final answer." vertex="1">
+          <mxGeometry height="58" width="882" x="648" y="852" as="geometry" />
+        </mxCell>
+        <mxCell id="e38_g1_g3" edge="1" parent="g_a" source="g1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="g3" value="yes">
+          <mxGeometry relative="1" x="-0.1" as="geometry" />
+        </mxCell>
+        <mxCell id="e39_g1_g2" edge="1" parent="g_a" source="g1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="g2" value="no">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e40_g3_g4" edge="1" parent="g_a" source="g3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="g4" value="no">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e41_g3_g_gates" edge="1" parent="g_a" source="g3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.1006;entryDx=0;entryDy=0;" target="g_gates" value="yes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e42_g4_g5" edge="1" parent="g_a" source="g4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="g5" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e43_g5_g_gates" edge="1" parent="g_a" source="g5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.6053;entryDx=0;entryDy=0;" target="g_gates" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e84_g_truth_g4" edge="1" parent="g_a" source="g_truth" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#5f9a60;dashed=1;fontSize=11;fontColor=#3f6f40;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="g4" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="299" y="595" />
+              <mxPoint x="299" y="246" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e85_g_truth_g_gates" edge="1" parent="g_a" source="g_truth" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#5f9a60;dashed=1;fontSize=11;fontColor=#3f6f40;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.8978;entryDx=0;entryDy=0;" target="g_gates" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e44_g_gates_g6" edge="1" parent="g_a" source="g_gates" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.3365;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="g6" value="fails">
+          <mxGeometry relative="1" x="-0.05" as="geometry" />
+        </mxCell>
+        <mxCell id="e45_g_gates_g7" edge="1" parent="g_a" source="g_gates" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.2358;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="g7" value="passes">
+          <mxGeometry relative="1" x="-0.1" as="geometry" />
+        </mxCell>
+        <mxCell id="e46_g6_g8" edge="1" parent="g_a" source="g6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="g8" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1405" y="682" />
+              <mxPoint x="1089" y="682" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e47_g7_g8" edge="1" parent="g_a" source="g7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="g8" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e48_g8_g9" edge="1" parent="g_a" source="g8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="g9" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="box4" parent="1" style="swimlane;html=1;whiteSpace=wrap;startSize=72;horizontal=1;rounded=1;absoluteArcSize=1;arcSize=24;fillColor=#e2e2de;swimlaneFillColor=#f3f3f1;strokeColor=#8f8f8a;strokeWidth=2;fontSize=14;fontColor=#202124;align=center;verticalAlign=middle;collapsible=0;container=1;swimlaneLine=1;" value="&lt;b style=&quot;font-size:24px&quot;&gt;1. Extraction and chunking&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:13px&quot;&gt;Runs by hand before any question. Turns PDFs into searchable child chunks that link back to full sections.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="1156" width="1600" x="40" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="x_a" parent="box4" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;container=1;collapsible=0;pointerEvents=0;fillColor=#ffffff;strokeColor=#c4c4bf;strokeWidth=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;spacing=0;fontSize=13;fontColor=#555555;" value="&lt;b&gt;A. Sources&lt;/b&gt;" vertex="1">
+          <mxGeometry height="774" width="282" x="28" y="92" as="geometry" />
+        </mxCell>
+        <mxCell id="x1" parent="x_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#dce9fa;strokeColor=#6da5df;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;X1&lt;/font&gt;&amp;nbsp; &lt;b&gt;Google Drive folder&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Research PDFs, index.csv and the reading guide.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="250" x="16" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="x2" parent="x_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;X2&lt;/font&gt;&amp;nbsp; &lt;b&gt;Sync + manifest&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Downloads the files. sources.local.json keeps each file&#39;s Drive ID, path, title and link.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;drive_sync.py&lt;/font&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="16" y="176" as="geometry" />
+        </mxCell>
+        <mxCell id="x3" parent="x_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;X3&lt;/font&gt;  &lt;b&gt;Validate manifest&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Check IDs, HTTPS links and files. PDFs continue to indexing; index.csv and the guide supply catalog information at question time.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;load_source_manifest()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="132" width="250" x="16" y="332" as="geometry" />
+        </mxCell>
+        <mxCell id="x4" parent="x_a" style="rhombus;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=40;spacingRight=40;fontSize=13;fontColor=#202124;fillColor=#fff4ce;strokeColor=#e2b94b;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;X4&lt;/font&gt;&amp;nbsp; &lt;b&gt;Paper unchanged?&lt;/b&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="16" y="484" as="geometry" />
+        </mxCell>
+        <mxCell id="x5" parent="x_a" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#e8ebee;strokeColor=#9aa4ad;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;X5&lt;/font&gt;&amp;nbsp; &lt;b&gt;Skip this paper&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Fingerprint matches: SHA-256 of the PDF bytes + title, link and index settings.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="104" width="250" x="16" y="650" as="geometry" />
+        </mxCell>
+        <mxCell id="e54_x1_x2" edge="1" parent="x_a" source="x1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="x2" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e55_x2_x3" edge="1" parent="x_a" source="x2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="x3" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e56_x3_x4" edge="1" parent="x_a" source="x3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="x4" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e57_x4_x5" edge="1" parent="x_a" source="x4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="x5" value="yes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="x_b" parent="box4" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;container=1;collapsible=0;pointerEvents=0;fillColor=#ffffff;strokeColor=#c4c4bf;strokeWidth=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;spacing=0;fontSize=13;fontColor=#555555;" value="&lt;b&gt;B. Read each page&lt;/b&gt;" vertex="1">
+          <mxGeometry height="774" width="598" x="344" y="92" as="geometry" />
+        </mxCell>
+        <mxCell id="x6" parent="x_b" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#ffe2c0;strokeColor=#e59945;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;X6&lt;/font&gt;&amp;nbsp; &lt;b&gt;Layout model, page by page&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;pymupdf_layout 1.28.2 in its own worker process. Finds regions and reading order. Table-cell rebuild is off.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;NeuralPageReader&lt;/font&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="16" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="x7" parent="x_b" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;X7&lt;/font&gt;&amp;nbsp; &lt;b&gt;Read the kept regions&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Reads each region from the PDF&#39;s text layer, in the model&#39;s order. Records heading font sizes.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;extract_region_text()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="332" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="x8" parent="x_b" style="rhombus;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=0;spacingLeft=40;spacingRight=40;fontSize=13;fontColor=#202124;fillColor=#fff4ce;strokeColor=#e2b94b;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;X8&lt;/font&gt;&amp;nbsp; &lt;b&gt;Page read OK?&lt;/b&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="332" y="176" as="geometry" />
+        </mxCell>
+        <mxCell id="x9" parent="x_b" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#e8ebee;strokeColor=#9aa4ad;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;X9&lt;/font&gt;&amp;nbsp; &lt;b&gt;Fast fallback&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;After a worker error or an empty page, PyMuPDF4LLM reads the text layer without layout. Marked uncertain, with the reason.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;extract_fast_page()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="16" y="176" as="geometry" />
+        </mxCell>
+        <mxCell id="x10" parent="x_b" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;X10&lt;/font&gt;&amp;nbsp; &lt;b&gt;Label blocks + report&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;“Table 2:” and “Figure A1.” become captions. Font size suggests heading depth. One JSON report per PDF.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;extract_text_pages()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="124" width="250" x="332" y="338" as="geometry" />
+        </mxCell>
+        <mxCell id="x_card" parent="x_b" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=9;fontSize=13;fontColor=#333333;fillColor=#fbfbf9;strokeColor=#b8b8b3;strokeWidth=1;" value="&lt;b&gt;Page reading rules&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;Kept:&lt;/b&gt; text, title, section header, caption, list item, footnote, code.&lt;br&gt;&lt;br&gt;&lt;b&gt;Skipped:&lt;/b&gt; table, picture, formula, page header, page footer. Table cells are not indexed, only their captions.&lt;br&gt;&lt;br&gt;&lt;b&gt;Worker process:&lt;/b&gt; one model serves every page, and a crash cannot take down the run. Slow pages print a warning but never time out.&lt;br&gt;&lt;br&gt;&lt;b&gt;Every page records:&lt;/b&gt; extraction_method, structure_confidence and review_reason." vertex="1">
+          <mxGeometry height="216" width="566" x="16" y="498" as="geometry" />
+        </mxCell>
+        <mxCell id="e59_x6_x7" edge="1" parent="x_b" source="x6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="x7" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e60_x7_x8" edge="1" parent="x_b" source="x7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="x8" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e61_x8_x9" edge="1" parent="x_b" source="x8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="x9" value="no">
+          <mxGeometry relative="1" x="-0.1" as="geometry" />
+        </mxCell>
+        <mxCell id="e62_x8_x10" edge="1" parent="x_b" source="x8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="x10" value="yes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e63_x9_x10" edge="1" parent="x_b" source="x9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="x10" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="x_c" parent="box4" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;container=1;collapsible=0;pointerEvents=0;fillColor=#ffffff;strokeColor=#c4c4bf;strokeWidth=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;spacing=0;fontSize=13;fontColor=#555555;" value="&lt;b&gt;C. Build sections&lt;/b&gt;" vertex="1">
+          <mxGeometry height="774" width="282" x="976" y="92" as="geometry" />
+        </mxCell>
+        <mxCell id="x11" parent="x_c" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;X11&lt;/font&gt;&amp;nbsp; &lt;b&gt;Clean text&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Expands ligatures, joins soft hyphens, drops invisible characters. Ordinary hyphens and numbers stay.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;clean_pdf_text()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="118" width="250" x="16" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="x12" parent="x_c" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size: 11px;&quot;&gt;X12&lt;/font&gt;&amp;nbsp; &lt;b&gt;Group into parent sections&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size: 12px;&quot;&gt;Heading + its text = one section, with breadcrumb and page span. “2.1” sets depth. No headings at all: one section per page. A fallback page is its own section.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size: 11px;&quot;&gt;group_layout_pages_into_sections()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="166" width="250" x="16" y="176" as="geometry" />
+        </mxCell>
+        <mxCell id="x13" parent="x_c" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;X13&lt;/font&gt;&amp;nbsp; &lt;b&gt;Save captions separately&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Each caption is its own record with its exact page and label, so its citation does not inherit the section&#39;s page span.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="112" width="250" x="16" y="364" as="geometry" />
+        </mxCell>
+        <mxCell id="x14" parent="x_c" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#dce9fa;strokeColor=#6da5df;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;X14&lt;/font&gt;&amp;nbsp; &lt;b&gt;Sections&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Text, location, heading path, level, reference label, extraction method, confidence.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;ExtractedSection&lt;/font&gt;" vertex="1">
+          <mxGeometry height="112" width="250" x="16" y="512" as="geometry" />
+        </mxCell>
+        <mxCell id="x_runs" parent="x_c" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=9;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=4;fontSize=14;fontColor=#202124;fillColor=#e3f1e1;strokeColor=#81b782;strokeWidth=1.5;" value="&lt;b&gt;SQLite: index_runs&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Counts, status, manifest hash, settings signature.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="250" x="16" y="660" as="geometry" />
+        </mxCell>
+        <mxCell id="e65_x11_x12" edge="1" parent="x_c" source="x11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="x12" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e66_x12_x13" edge="1" parent="x_c" source="x12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="x13" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e67_x13_x14" edge="1" parent="x_c" source="x13" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="x14" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="x_d" parent="box4" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;container=1;collapsible=0;pointerEvents=0;fillColor=#ffffff;strokeColor=#c4c4bf;strokeWidth=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;spacing=0;fontSize=13;fontColor=#555555;" value="&lt;b&gt;D. Chunk, embed, write&lt;/b&gt;" vertex="1">
+          <mxGeometry height="774" width="282" x="1292" y="92" as="geometry" />
+        </mxCell>
+        <mxCell id="x15" parent="x_d" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;X15&lt;/font&gt;&amp;nbsp; &lt;b&gt;Split into child chunks&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Max 1,200 characters including the Paper / Section prefix. Overlap 120. Splits at paragraph, line, sentence, then word. No text at all (a scan; OCR is off): skip the paper.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;split_sections_into_chunks()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="166" width="250" x="16" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="x16" parent="x_d" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#ffe2c0;strokeColor=#e59945;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;X16&lt;/font&gt;&amp;nbsp; &lt;b&gt;Embed children&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;EmbeddingGemma, 768 dimensions, batches of 16. Finishes before any write, so a failure leaves the old paper searchable.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;embed_document_chunks()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="132" width="250" x="16" y="214" as="geometry" />
+        </mxCell>
+        <mxCell id="x17" parent="x_d" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;X17&lt;/font&gt;&amp;nbsp; &lt;b&gt;Build records&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Chunk ID + parent_id link a child to its section. Adds title, link, location, pages. Parent vector = mean of its children.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="118" width="250" x="16" y="376" as="geometry" />
+        </mxCell>
+        <mxCell id="x18" parent="x_d" style="rounded=1;absoluteArcSize=1;arcSize=14;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=5;fontSize=14;fontColor=#202124;fillColor=#eee5f5;strokeColor=#aa81c5;strokeWidth=1.5;" value="&lt;font color=&quot;#6f6f6f&quot; style=&quot;font-size:11px&quot;&gt;X18&lt;/font&gt;&amp;nbsp; &lt;b&gt;Write + clean up&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Upsert sections and chunks. Delete old IDs and papers no longer in the manifest.&lt;/font&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot; color=&quot;#666666&quot; style=&quot;font-size:11px&quot;&gt;index_research_paper()&lt;/font&gt;" vertex="1">
+          <mxGeometry height="108" width="250" x="16" y="528" as="geometry" />
+        </mxCell>
+        <mxCell id="e69_x15_x16" edge="1" parent="x_d" source="x15" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="x16" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e70_x16_x17" edge="1" parent="x_d" source="x16" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="x17" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e71_x17_x18" edge="1" parent="x_d" source="x17" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="x18" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="x_e" parent="box4" style="rounded=1;absoluteArcSize=1;arcSize=16;html=1;whiteSpace=wrap;container=1;collapsible=0;pointerEvents=0;fillColor=#ffffff;strokeColor=#c4c4bf;strokeWidth=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=4;spacing=0;fontSize=13;fontColor=#555555;" value="&lt;b&gt;E. Stored result: one section becomes a parent and its children&lt;/b&gt;" vertex="1">
+          <mxGeometry height="252" width="1546" x="28" y="882" as="geometry" />
+        </mxCell>
+        <mxCell id="fig_parent" parent="x_e" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fontSize=13;fontColor=#202124;fillColor=#e3f1e1;strokeColor=#81b782;strokeWidth=1.5;" value="&lt;b&gt;Parent section&lt;/b&gt;&amp;nbsp; 2 Methods &amp;gt; 2.1 Training, page 3 to page 5. &lt;font color=&quot;#444444&quot;&gt;Full text, one record per section.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="44" width="882" x="16" y="36" as="geometry" />
+        </mxCell>
+        <mxCell id="fig_c1" parent="x_e" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=2;spacingLeft=26;spacingRight=26;fontSize=12;fontColor=#202124;fillColor=#e3f1e1;strokeColor=#81b782;strokeWidth=1.5;opacity=75;" value="&lt;b&gt;Child 1&lt;/b&gt; &amp;middot; up to 1,200 characters&lt;br&gt;&lt;font face=&quot;Courier New&quot; style=&quot;font-size:11px&quot;&gt;Paper: 12_model.pdf&lt;br&gt;Section: 2 Methods &amp;gt; 2.1 Training&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;first part of the section text&lt;/font&gt;" vertex="1">
+          <mxGeometry height="92" width="310" x="16" y="108" as="geometry" />
+        </mxCell>
+        <mxCell id="fig_c2" parent="x_e" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=2;spacingLeft=26;spacingRight=26;fontSize=12;fontColor=#202124;fillColor=#e3f1e1;strokeColor=#81b782;strokeWidth=1.5;opacity=75;" value="&lt;b&gt;Child 2&lt;/b&gt; &amp;middot; up to 1,200 characters&lt;br&gt;&lt;font face=&quot;Courier New&quot; style=&quot;font-size:11px&quot;&gt;Paper: 12_model.pdf&lt;br&gt;Section: 2 Methods &amp;gt; 2.1 Training&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;starts with the last 120 characters of child 1&lt;/font&gt;" vertex="1">
+          <mxGeometry height="92" width="310" x="302" y="108" as="geometry" />
+        </mxCell>
+        <mxCell id="fig_c3" parent="x_e" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=2;spacingLeft=26;spacingRight=26;fontSize=12;fontColor=#202124;fillColor=#e3f1e1;strokeColor=#81b782;strokeWidth=1.5;opacity=75;" value="&lt;b&gt;Child 3&lt;/b&gt; &amp;middot; up to 1,200 characters&lt;br&gt;&lt;font face=&quot;Courier New&quot; style=&quot;font-size:11px&quot;&gt;Paper: 12_model.pdf&lt;br&gt;Section: 2 Methods &amp;gt; 2.1 Training&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;starts with the last 120 characters of child 2&lt;/font&gt;" vertex="1">
+          <mxGeometry height="92" width="310" x="588" y="108" as="geometry" />
+        </mxCell>
+        <mxCell id="fig_note" parent="x_e" style="rounded=1;absoluteArcSize=1;arcSize=10;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=9;fontSize=12;fontColor=#333333;fillColor=#ffffff;strokeColor=#ffffff;strokeWidth=1;verticalAlign=middle;spacing=2;" value="&lt;b&gt;Citation location:&lt;/b&gt; page 3 to page 5: 2 Methods &amp;gt; 2.1 Training, part 2.&amp;nbsp; &lt;b&gt;Captions:&lt;/b&gt; saved as their own short sections, with their exact page." vertex="1">
+          <mxGeometry height="28" width="882" x="16" y="208" as="geometry" />
+        </mxCell>
+        <mxCell id="x_sections" parent="x_e" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=9;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=4;fontSize=14;fontColor=#202124;fillColor=#e3f1e1;strokeColor=#81b782;strokeWidth=1.5;" value="&lt;b&gt;Chroma: research_sections&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Parent sections. Full text plus the mean of child vectors. Read by ID, not searched.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="104" width="262" x="958" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="x_chunks" parent="x_e" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;size=9;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;spacing=4;fontSize=14;fontColor=#202124;fillColor=#e3f1e1;strokeColor=#81b782;strokeWidth=1.5;" value="&lt;b&gt;Chroma: research_papers&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#444444&quot; style=&quot;font-size:12px&quot;&gt;Child text, 768-d vector, title, link, location, pages, parent_id. Cosine search.&lt;/font&gt;" vertex="1">
+          <mxGeometry height="120" width="262" x="1274" y="104" as="geometry" />
+        </mxCell>
+        <mxCell id="e75_fig_c1_fig_parent" edge="1" parent="x_e" source="fig_c1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1;strokeColor=#5f9a60;fontSize=11;fontColor=#3f6f40;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.1757;entryY=1;entryDx=0;entryDy=0;" target="fig_parent" value="">
+          <mxGeometry relative="1" y="44" as="geometry" />
+        </mxCell>
+        <mxCell id="e76_fig_c2_fig_parent" edge="1" parent="x_e" source="fig_c2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1;strokeColor=#5f9a60;fontSize=11;fontColor=#3f6f40;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="fig_parent" value="parent_id">
+          <mxGeometry relative="1" y="44" as="geometry" />
+        </mxCell>
+        <mxCell id="e77_fig_c3_fig_parent" edge="1" parent="x_e" source="fig_c3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1;strokeColor=#5f9a60;fontSize=11;fontColor=#3f6f40;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.8243;entryY=1;entryDx=0;entryDy=0;" target="fig_parent" value="">
+          <mxGeometry relative="1" y="44" as="geometry" />
+        </mxCell>
+        <mxCell id="e78_fig_parent_x_sections" edge="1" parent="x_e" source="fig_parent" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1;strokeColor=#5f9a60;fontSize=11;fontColor=#3f6f40;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.3077;entryDx=0;entryDy=0;" target="x_sections" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e79_fig_c3_x_chunks" edge="1" parent="x_e" source="fig_c3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1;strokeColor=#5f9a60;fontSize=11;fontColor=#3f6f40;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.4167;entryDx=0;entryDy=0;" target="x_chunks" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e58_x4_x6" edge="1" parent="box4" source="x4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="x6" value="no">
+          <mxGeometry relative="1" x="-0.92" as="geometry" />
+        </mxCell>
+        <mxCell id="e64_x10_x11" edge="1" parent="box4" source="x10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="x11" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e68_x14_x15" edge="1" parent="box4" source="x14" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#333333;fontSize=11;fontColor=#333333;labelBackgroundColor=#ffffff;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="x15" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e72_x18_x_runs" edge="1" parent="box4" source="x18" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#5f9a60;dashed=1;fontSize=11;fontColor=#3f6f40;labelBackgroundColor=#ffffff;exitX=0;exitY=0.72;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="x_runs" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e73_x18_x_chunks" edge="1" parent="box4" source="x18" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#5f9a60;dashed=1;fontSize=11;fontColor=#3f6f40;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="x_chunks" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e74_x18_x_sections" edge="1" parent="box4" source="x18" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#5f9a60;dashed=1;fontSize=11;fontColor=#3f6f40;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="x_sections" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1433" y="874" />
+              <mxPoint x="1117" y="874" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e80_p15_r1" edge="1" parent="1" source="p15" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=3.5;strokeColor=#202124;fontSize=14;fontStyle=1;fontColor=#202124;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="r1" value="search tasks">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e81_r16_g1" edge="1" parent="1" source="r16" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=3.5;strokeColor=#202124;fontSize=14;fontStyle=1;fontColor=#202124;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="g1" value="evidence S1 … Sn">
+          <mxGeometry relative="1" x="-0.25" as="geometry" />
+        </mxCell>
+        <mxCell id="e82_box4_box2" edge="1" parent="1" source="box4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=3.5;strokeColor=#202124;fontSize=14;fontStyle=1;fontColor=#202124;labelBackgroundColor=#ffffff;exitX=1;exitY=0.0311;exitDx=0;exitDy=0;entryX=0;entryY=0.0311;entryDx=0;entryDy=0;" target="box2" value="Chroma index">
+          <mxGeometry relative="1" y="-14" as="geometry" />
+        </mxCell>
+        <mxCell id="e83_box4_box1" edge="1" parent="1" source="box4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=3.5;strokeColor=#202124;fontSize=14;fontStyle=1;fontColor=#202124;labelBackgroundColor=#ffffff;exitX=0.1056;exitY=1;exitDx=0;exitDy=0;entryX=0.1056;entryY=0;entryDx=0;entryDy=0;" target="box1" value="paper metadata">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
