@@ -2,15 +2,13 @@
 
 ## Overview
 
-This 4-week reading plan is designed to help learners gradually understand the research paper **[Attention Is All You Need](https://arxiv.org/abs/1706.03762)** by Vaswani et al. (2017), which introduced the Transformer architecture.
+This 4-week reading plan is designed to help learners gradually understand the research paper [Attention Is All You Need](https://arxiv.org/abs/1706.03762) by Vaswani et al. (2017), which introduced the Transformer architecture.
 
 The goal is not simply to read the paper but to understand the motivation, key concepts, architecture, technical mechanisms, and experimental findings behind the Transformer.
 
-**Duration:** 4 weeks  
-**Paper:** Attention Is All You Need (2017)  
-**Authors:** Ashish Vaswani et al.
-
----
+- **Duration:** 4 weeks
+- **Paper:** Attention Is All You Need (2017)
+- **Authors:** Ashish Vaswani et al.
 
 ## 4-Week Reading Plan
 
@@ -18,14 +16,15 @@ The goal is not simply to read the paper but to understand the motivation, key c
 
 **Objective:** Understand the research problem, motivation, and main contributions of the paper before diving into technical details.
 
-#### Activities
+**Activities**
 
 1. Read the Abstract to understand the paper's main objective, proposed approach, and key contributions.
 2. Study the Abstract and Introduction in detail to identify key terminology, concepts, research problems, and motivations.
 3. Understand the limitations of existing sequence modeling approaches, particularly recurrent neural networks (RNNs) and convolutional neural networks (CNNs).
 4. Identify why the authors proposed the Transformer architecture and how it differs from previous approaches.
+5. **Keyword research and team presentations:** As you read through the paper, select a key term or concept that is unfamiliar or important (for example, *sequence transduction*, *encoder-decoder*, *attention*, *BLEU score*). Research it using external sources such as textbooks, blog posts, tutorials, or videos, then propose to present it to the team. These short presentations build a shared fundamental understanding before everyone reads deeply through the paper. Claim your keyword in the **Keyword Presentation Sign-Up** table below so topics aren't duplicated.
 
-#### Key Questions to Answer
+**Key Questions to Answer**
 
 - What problem is the paper trying to solve?
 - Why were RNNs and CNNs commonly used before Transformers?
@@ -33,17 +32,28 @@ The goal is not simply to read the paper but to understand the motivation, key c
 - What is the main idea behind the Attention mechanism?
 - Why is the Transformer architecture considered a significant contribution?
 
-**Expected Outcome:**
+**Expected Outcome:** Be able to summarize the paper's motivation, research problem, and main contributions without focusing heavily on mathematical equations, supported by a shared team vocabulary built through the keyword presentations.
 
-Be able to summarize the paper's motivation, research problem, and main contributions without focusing heavily on mathematical equations.
+#### Keyword Presentation Sign-Up
 
----
+> **📝 Action for readers:** When you find a keyword you'd like to research during Weeks 1–2, add it to the table below with your name and the date you plan to present. Check the table first so two people don't pick the same term. Click into any empty row to type, and add more rows as needed.
+
+| Terminology to Research | Presenter Name | Presentation Date |
+| --- | --- | --- |
+|  |  |  |
+|  |  |  |
+|  |  |  |
+|  |  |  |
+|  |  |  |
+|  |  |  |
+|  |  |  |
+|  |  |  |
 
 ### Weeks 3–4: Explore the Architecture and Technical Details
 
 **Objective:** Develop a deeper understanding of the Transformer architecture, its core mechanisms, and the experimental evidence supporting the proposed approach.
 
-#### Activities
+**Activities**
 
 1. Review and interpret the figures, diagrams, tables, and conclusion to understand the Transformer architecture and the paper's key findings.
 2. Study the Methodology section to understand the architecture and its core components:
@@ -61,7 +71,7 @@ Be able to summarize the paper's motivation, research problem, and main contribu
    - Experimental results and comparisons with existing approaches
 4. Analyze the advantages and limitations of the Transformer architecture based on the authors' findings.
 
-#### Key Questions to Answer
+**Key Questions to Answer**
 
 - How does the Encoder process input sequences?
 - How does the Decoder generate output sequences?
@@ -71,6 +81,4 @@ Be able to summarize the paper's motivation, research problem, and main contribu
 - What do the experimental results demonstrate?
 - What are the key advantages of Transformers compared with previous architectures?
 
-**Expected Outcome:**
-
-Be able to explain the overall Transformer architecture, describe how its main components work together, and interpret the experimental findings presented in the paper.
+**Expected Outcome:** Be able to explain the overall Transformer architecture, describe how its main components work together, and interpret the experimental findings presented in the paper.
